@@ -104,7 +104,7 @@ def donut_svg(value_pct, ring_color, track="#EFEFEF", size=120, stroke=12, label
     cx = cy = size // 2
     r = (size - stroke) // 2
     full = 2 * math.pi * r
-    gap = 0.03 * full
+    gap = 0.06 * full
     value_len = (pct / 100.0) * (full - gap)
     label = f"{value_pct:.0f}%" if label_text is None else label_text
 
