@@ -40,50 +40,57 @@ for idx, row in df.iterrows():
     variance = round(actual - target, 1)
     color = "green" if variance >= 0 else "red"
 
-    # --- Create Semi-Circular Gauge ---
-    fig = go.Figure(go.Indicator(
+    # --- Create Circular Gauge (compatible with Streamlit Cloud) ---
+    fig = go.Figure()
+
+    fig.add_trace(go.Indicator(
         mode="gauge+number",
         value=actual,
-        number={'suffix': "%", "font": {"size": 48, "color": "#5A5A5A"}},
-        title={'text': f"{kpi}", 'font': {'size': 22, 'color': '#5A5A5A'}},
+        number={'suffix': "%", "font": {"size": 48, "color": "#444"}},
+        title={'text': kpi, 'font': {'size': 20, 'color': '#333'}},
         gauge={
-            'axis': {'range': [0, 100], 'tickwidth': 0, 'tickcolor': "white"},
-            'bar': {'color': '#ff4b4b', 'thickness': 0.3},
+            'axis': {'range': [0, 100]},
+            'bar': {'color': '#ff4b4b'},
             'bgcolor': "white",
+            'borderwidth': 1,
+            'bordercolor': "#DDD",
             'steps': [
                 {'range': [0, target], 'color': '#ffeeee'},
-                {'range': [target, 100], 'color': '#f9f9f9'}
-            ],
-            'shape': 'semi'
-        },
-        domain={'x': [0, 1], 'y': [0, 1]}
+                {'range': [target, 100], 'color': '#f7f7f7'}
+            ]
+        }
     ))
+
+    # Make it look like a half-donut using layout range
     fig.update_layout(
-        margin=dict(l=5, r=5, t=20, b=0),
         height=300,
+        margin=dict(l=10, r=10, t=50, b=0),
         paper_bgcolor=card_colors[kpi],
     )
 
-    # --- Build Card ---
     with cols[idx]:
+        # Card Header
         st.markdown(
             f"""
             <div style='background-color:{card_colors[kpi]};
-                        padding:25px;
+                        padding:20px;
                         border-radius:25px;
                         box-shadow:0px 4px 15px rgba(0,0,0,0.1);
                         text-align:center;'>
-                <h3 style='margin-bottom:10px; color:#333; font-weight:700;'>{kpi}</h3>
+                <h3 style='margin-bottom:0px; color:#333;'>{kpi}</h3>
             </div>
             """,
             unsafe_allow_html=True
         )
 
+        # Chart
         st.plotly_chart(fig, use_container_width=True)
 
+        # KPI Details
         st.markdown(f"🎯 **Target:** {target}%", unsafe_allow_html=True)
         st.markdown(f"📉 **Variance:** <span style='color:{color}'>{variance:+.1f}%</span>", unsafe_allow_html=True)
 
+        # Button Styling
         st.markdown(
             """
             <style>
@@ -103,5 +110,6 @@ for idx, row in df.iterrows():
             """,
             unsafe_allow_html=True
         )
+
         st.button("Drill Down", key=kpi)
 
