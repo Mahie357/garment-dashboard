@@ -13,7 +13,7 @@ st.set_page_config(page_title="Garment Production Dashboard", layout="wide")
 GITHUB_EXCEL_URL = "https://github.com/Mahie357/garment-dashboard/raw/refs/heads/main/garment_data.xlsx"
 
 # -----------------------------
-# LOAD DATA FUNCTION
+# LOAD DATA
 # -----------------------------
 @st.cache_data(ttl=60)
 def load_data():
@@ -22,23 +22,20 @@ def load_data():
         response.raise_for_status()
         df = pd.read_excel(BytesIO(response.content))
     except Exception as e:
-        st.warning(f"⚠️ Could not load Excel from GitHub. Using sample data. Error: {e}")
+        st.warning(f"⚠️ Could not load Excel from GitHub. Using demo data. Error: {e}")
         df = pd.DataFrame({
             "KPI": ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"],
             "Actual": [90, 68, 3.5],
             "Target": [95, 70, 2.0],
         })
-    
-    # Normalize columns
-    df.columns = [c.strip().upper() for c in df.columns]
-    if not {"KPI", "ACTUAL", "TARGET"}.issubset(df.columns):
-        raise ValueError(f"Excel must contain columns: KPI, Actual, Target. Found: {list(df.columns)}")
 
+    # Clean and normalize
+    df.columns = [c.strip().upper() for c in df.columns]
     df["KPI"] = df["KPI"].astype(str).str.strip().str.upper()
     df["ACTUAL"] = pd.to_numeric(df["ACTUAL"], errors="coerce").fillna(0)
     df["TARGET"] = pd.to_numeric(df["TARGET"], errors="coerce").fillna(0)
 
-    # Maintain consistent order
+    # Keep correct order
     order = ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"]
     df = pd.concat([df[df["KPI"] == k] for k in order]).reset_index(drop=True)
     return df
@@ -46,7 +43,7 @@ def load_data():
 df = load_data()
 
 # -----------------------------
-# DASHBOARD HEADER
+# HEADER
 # -----------------------------
 st.markdown("""
 <div style="text-align:center; margin-bottom:20px;">
@@ -63,9 +60,9 @@ if st.button("🔄 Refresh Data"):
     st.rerun()
 
 # -----------------------------
-# KPI GAUGE CREATOR
+# KPI GAUGE
 # -----------------------------
-def create_gauge(value, color):
+def gauge_chart(value, color):
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=value,
@@ -79,19 +76,19 @@ def create_gauge(value, color):
         },
         domain={'x': [0, 1], 'y': [0, 1]},
     ))
-    fig.update_layout(height=180, margin=dict(l=0, r=0, t=10, b=0))
-    return fig.to_html(include_plotlyjs="cdn", full_html=False)
+    fig.update_layout(height=180, margin=dict(l=0, r=0, t=0, b=0))
+    return fig
 
 # -----------------------------
-# KPI CARD LAYOUT
+# KPI CARDS
 # -----------------------------
 col1, col2, col3 = st.columns(3, gap="large")
-kpi_colors = ["#E63946", "#FFB703", "#E63946"]
 bg_colors = ["#FFEAEA", "#FFF6DA", "#FFEAEA"]
+ring_colors = ["#E63946", "#FFB703", "#E63946"]
 
 records = df.to_dict("records")
 
-for col, rec, color, bg in zip([col1, col2, col3], records, kpi_colors, bg_colors):
+for col, rec, bg, color in zip([col1, col2, col3], records, bg_colors, ring_colors):
     kpi = rec["KPI"]
     actual = rec["ACTUAL"]
     target = rec["TARGET"]
@@ -100,6 +97,7 @@ for col, rec, color, bg in zip([col1, col2, col3], records, kpi_colors, bg_color
     variance_color = "green" if variance > 0 else "#E63946"
 
     with col:
+        # Card container
         st.markdown(
             f"""
             <div style="
@@ -107,43 +105,44 @@ for col, rec, color, bg in zip([col1, col2, col3], records, kpi_colors, bg_color
                 padding:25px;
                 border-radius:20px;
                 box-shadow:0 2px 6px rgba(0,0,0,0.1);
-                height:400px;
+                height:420px;
                 display:flex;
                 flex-direction:column;
                 justify-content:space-between;">
-                
-                <!-- TOP -->
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <h4 style="margin:0; font-weight:800;">{kpi}</h4>
-                    <div style="width:120px;">{create_gauge(actual, color)}</div>
+                    <div style="width:120px;"></div>
                 </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-                <!-- ACTUAL -->
-                <div style="text-align:left; margin-top:10px;">
-                    <h2 style="font-size:48px; font-weight:800; margin:5px 0;">{actual:.1f}%</h2>
-                </div>
+        # Gauge chart (inside Streamlit container)
+        st.plotly_chart(gauge_chart(actual, color), use_container_width=True)
 
-                <hr style="border:1px solid #ddd; margin:8px 0;"/>
-
-                <!-- TARGET & VARIANCE -->
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <p style="margin:0; font-size:16px;"><b>Target:</b> {target:.1f}%</p>
-                    <p style="margin:0; font-size:16px;"><b>Variance:</b> 
-                    <span style="color:{variance_color};">{variance_text}</span></p>
-                </div>
-
-                <!-- BUTTON -->
-                <div style="text-align:center; margin-top:15px;">
-                    <button style="
-                        background-color:white;
-                        color:{color};
-                        border:2px solid {color};
-                        padding:8px 25px;
-                        border-radius:10px;
-                        cursor:pointer;
-                        font-weight:600;
-                        font-size:15px;">Drill Down</button>
-                </div>
+        # KPI metrics
+        st.markdown(
+            f"""
+            <div style="text-align:left; margin-top:-10px;">
+                <h2 style="font-size:48px; font-weight:800; margin:5px 0;">{actual:.1f}%</h2>
+            </div>
+            <hr style="border:1px solid #ddd; margin:8px 0;"/>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <p style="margin:0; font-size:16px;"><b>Target:</b> {target:.1f}%</p>
+                <p style="margin:0; font-size:16px;"><b>Variance:</b> 
+                <span style="color:{variance_color};">{variance_text}</span></p>
+            </div>
+            <div style="text-align:center; margin-top:15px;">
+                <button style="
+                    background-color:white;
+                    color:{color};
+                    border:2px solid {color};
+                    padding:8px 25px;
+                    border-radius:10px;
+                    cursor:pointer;
+                    font-weight:600;
+                    font-size:15px;">Drill Down</button>
+            </div>
             </div>
             """,
             unsafe_allow_html=True
