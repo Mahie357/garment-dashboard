@@ -1,4 +1,4 @@
-# App.py  — tolerant loader + exact tile layout
+# App.py — Garment Production Dashboard (auto-update from GitHub Excel)
 
 import math
 import pandas as pd
@@ -7,118 +7,65 @@ from streamlit.components.v1 import html as st_html
 
 st.set_page_config(page_title="Garment Production Dashboard", layout="wide")
 
-# ---------- tolerant column detection ----------
-def _norm(s):  # normalize for matching
-    return str(s).strip().lower().replace(" ", "").replace("_", "")
+# ============================================================
+# 1️⃣ CONFIGURE YOUR GITHUB EXCEL RAW LINK HERE
+# ============================================================
+GITHUB_EXCEL_URL = "https://raw.githubusercontent.com/<your-username>/<your-repo>/main/garment_data.xlsx"
+# Example: https://raw.githubusercontent.com/johndoe/garment-dashboard/main/garment_data.xlsx
+# Make sure this is the RAW link, not the HTML page link.
 
-def _find_col(cols, candidates):
-    cols_n = {_norm(c): c for c in cols}
-    for cand in candidates:
-        key = _norm(cand)
-        if key in cols_n:
-            return cols_n[key]
-    # fuzzy: contains any candidate substring
-    for c in cols:
-        c_n = _norm(c)
-        if any(_norm(x) in c_n for x in candidates):
-            return c
-    return None
-
-def read_any_excel(path="garment_data.xlsx"):
-    # Try normal read
-    try:
-        df = pd.read_excel(path)
-        if df.empty or df.columns.size == 0:
-            raise ValueError("Empty sheet")
-    except Exception:
-        return None
-
-    # Try to detect the 3 columns (many plausible aliases allowed)
-    kpi_col = _find_col(
-        df.columns,
-        ["kpi", "metric", "name", "measure", "indicator", "category", "title"],
-    )
-    val_col = _find_col(
-        df.columns,
-        ["value", "current", "actual", "result", "score", "percent"],
-    )
-    tgt_col = _find_col(
-        df.columns,
-        ["target", "goal", "plan", "benchmark"],
-    )
-    var_col = _find_col(
-        df.columns,
-        ["variance", "var", "diff", "delta", "gap"],
-    )
-
-    if not kpi_col and df.shape[1] >= 1:
-        kpi_col = df.columns[0]
-    if not val_col and df.shape[1] >= 2:
-        val_col = df.columns[1]
-    if not tgt_col and df.shape[1] >= 3:
-        tgt_col = df.columns[2]
-    if not var_col and df.shape[1] >= 4:
-        var_col = df.columns[3]
-
-    # Ensure we have something usable
-    try:
-        df2 = df[[kpi_col, val_col, tgt_col, var_col]].copy()
-        df2.columns = ["KPI", "value", "target", "variance"]
-        return df2
-    except Exception:
-        return None
-
+# ============================================================
+# 2️⃣ LOAD DATA FROM GITHUB
+# ============================================================
 def load_data():
-    df = read_any_excel("garment_data.xlsx")
-    if df is None:
-        # Fallback demo dataset so you can see the layout
-        df = pd.DataFrame(
-            {
-                "KPI": ["PRODUCTIVITY", "EFFICIENCY", "VARIANCE FROM TARGET"],
-                "value": [72, 68, -4],
-                "target": [75, 70, 0],
-                "variance": [-3, -2, -4],
-            }
-        )
-        st.info("Using demo data (couldn’t match columns in garment_data.xlsx).")
-
-    # Normalize keys
+    try:
+        df = pd.read_excel(GITHUB_EXCEL_URL)
+        st.success("✅ Live data loaded from GitHub successfully.")
+    except Exception as e:
+        st.warning(f"⚠️ Could not load Excel from GitHub. Using sample demo data.\nError: {e}")
+        df = pd.DataFrame({
+            "KPI": ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"],
+            "value": [90, 68, 3.5],
+            "target": [95, 70, 2],
+            "variance": [-5, -2, 1.5],
+        })
     df["KPI"] = df["KPI"].astype(str).str.upper().str.strip()
-    want = ["PRODUCTIVITY", "EFFICIENCY", "VARIANCE FROM TARGET"]
+    return df
 
-    out = {}
-    for k in want:
-        r = df[df["KPI"] == k]
-        if r.empty:
-            # try fuzzy contains
-            r = df[df["KPI"].str.contains(k, na=False)]
-        if r.empty:
-            out[k] = {"value": 0.0, "target": 0.0, "variance": 0.0}
-        else:
-            row = r.iloc[0]
-            def f(v):
-                try: return float(v)
-                except: return 0.0
-            out[k] = {"value": f(row["value"]), "target": f(row["target"]), "variance": f(row["variance"])}
-    return out
+# ============================================================
+# 3️⃣ DATA PROCESSING
+# ============================================================
+def get_kpi(df, name):
+    r = df[df["KPI"] == name.upper()]
+    if r.empty:
+        return {"value": 0, "target": 0, "variance": 0}
+    row = r.iloc[0]
+    return {
+        "value": float(row.get("value", 0)),
+        "target": float(row.get("target", 0)),
+        "variance": float(row.get("variance", 0))
+    }
 
-D = load_data()
+D = {}
+data = load_data()
+for k in ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"]:
+    D[k] = get_kpi(data, k)
 
-# ---------- helpers ----------
+# ============================================================
+# 4️⃣ CHART & CARD HELPERS
+# ============================================================
 def clamp_pct(p):
     try: return max(0.0, min(100.0, float(p)))
     except: return 0.0
 
 def donut_svg(value_pct, ring_color, track="#EFEFEF", size=92, stroke=10, label_text=None):
-    pct = clamp_pct(abs(value_pct))  # gauge fill uses absolute
+    pct = clamp_pct(abs(value_pct))
     cx = cy = size // 2
     r = (size - stroke) // 2
     full = 2 * math.pi * r
     gap = 0.03 * full
     value_len = (pct / 100.0) * (full - gap)
-
-    label = f"{value_pct:+.0f}%" if label_text is None else label_text
-
+    label = f"{value_pct:.1f}%" if label_text is None else label_text
     return f"""
     <svg width="{size}" height="{size}" viewBox="0 0 {size} {size}">
       <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{track}" stroke-width="{stroke}" stroke-linecap="round"
@@ -126,32 +73,32 @@ def donut_svg(value_pct, ring_color, track="#EFEFEF", size=92, stroke=10, label_
       <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{ring_color}" stroke-width="{stroke}" stroke-linecap="round"
               stroke-dasharray="{value_len} {full}" transform="rotate(-90 {cx} {cy})" />
       <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
-            font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
-            font-size="18" font-weight="700" fill="#2F2F2F">{label}</text>
+            font-family="Inter, system-ui" font-size="18" font-weight="700" fill="#2F2F2F">{label}</text>
     </svg>
     """
 
 def card_html(title, value, target, variance, bg, ring, btn):
-    val_str = f"{value:.0f}%" if title != "VARIANCE FROM TARGET" else f"{value:+.0f}%"
-    donut_label = val_str
     var_color = "#D92D20" if variance < 0 else "#05603A"
+    donut_label = f"{value:.1f}%"
     return f"""
     <div class="kpi-card" style="--card-bg:{bg}; --ring-color:{ring}; --btn-color:{btn}">
       <div class="kpi-top">
         <div class="kpi-title">{title}</div>
         <div class="kpi-ring-wrap">{donut_svg(value, ring, "#EEE", 92, 10, donut_label)}</div>
       </div>
-      <div class="kpi-value">{val_str}</div>
+      <div class="kpi-value">{value:.1f}%</div>
       <div class="kpi-divider"></div>
       <div class="kpi-meta">
-        <div><span class="label">Target:</span> <b>{target:.0f}%</b></div>
-        <div><span class="label">Variance:</span> <b style="color:{var_color};">{variance:+.0f}%</b></div>
+        <div><span class="label">Target:</span> <b>{target:.1f}%</b></div>
+        <div><span class="label">Variance:</span> <b style="color:{var_color};">{variance:+.1f}%</b></div>
       </div>
       <div class="kpi-btn"><button>Drill Down</button></div>
     </div>
     """
 
-# ---------- styles ----------
+# ============================================================
+# 5️⃣ STYLES
+# ============================================================
 CSS = """
 <style>
 :root{
@@ -179,7 +126,9 @@ CSS = """
 </style>
 """
 
-# ---------- header ----------
+# ============================================================
+# 6️⃣ DASHBOARD HEADER
+# ============================================================
 st.markdown(
     """
 <div class="block">
@@ -190,28 +139,18 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ---------- build cards ----------
+# ============================================================
+# 7️⃣ BUILD CARDS IN CORRECT ORDER
+# ============================================================
 pink_bg  = "#FDECEC"
 red_ring = "#E63946"
 amber_bg = "#FFF2CC"
 amber_ring = "#F4A300"
 
-cards = []
-cards.append(card_html("PRODUCTIVITY",
-                       D["PRODUCTIVITY"]["value"],
-                       D["PRODUCTIVITY"]["target"],
-                       D["PRODUCTIVITY"]["variance"],
-                       pink_bg, red_ring, red_ring))
-cards.append(card_html("EFFICIENCY",
-                       D["EFFICIENCY"]["value"],
-                       D["EFFICIENCY"]["target"],
-                       D["EFFICIENCY"]["variance"],
-                       amber_bg, amber_ring, amber_ring))
-cards.append(card_html("VARIANCE FROM TARGET",
-                       D["VARIANCE FROM TARGET"]["value"],
-                       D["VARIANCE FROM TARGET"]["target"],
-                       D["VARIANCE FROM TARGET"]["variance"],
-                       pink_bg, red_ring, red_ring))
+cards_html = []
+cards_html.append(card_html("PLAN VS ACTUAL", D["PLAN VS ACTUAL"]["value"], D["PLAN VS ACTUAL"]["target"], D["PLAN VS ACTUAL"]["variance"], pink_bg, red_ring, red_ring))
+cards_html.append(card_html("EFFICIENCY", D["EFFICIENCY"]["value"], D["EFFICIENCY"]["target"], D["EFFICIENCY"]["variance"], amber_bg, amber_ring, amber_ring))
+cards_html.append(card_html("LOST TIME", D["LOST TIME"]["value"], D["LOST TIME"]["target"], D["LOST TIME"]["variance"], pink_bg, red_ring, red_ring))
 
-page = f"""{CSS}<div class="kpi-grid">{cards[0]}{cards[1]}{cards[2]}</div>"""
+page = f"{CSS}<div class='kpi-grid'>{cards_html[0]}{cards_html[1]}{cards_html[2]}</div>"
 st_html(page, height=1000, scrolling=False)
