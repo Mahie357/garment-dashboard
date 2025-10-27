@@ -42,10 +42,10 @@ for i, row in df.iterrows():
     target = row["Target"]
     variance = round(actual - target, 1)
     accent = accent_colors[kpi]
-    card_bg = card_colors[kpi]
+    bg = card_colors[kpi]
     variance_color = "#00B050" if variance >= 0 else "#E60000"
 
-    # Donut chart
+    # Donut Chart
     fig = go.Figure(go.Pie(
         values=[abs(actual), 100 - abs(actual)],
         hole=0.75,
@@ -55,42 +55,42 @@ for i, row in df.iterrows():
     fig.add_annotation(text=f"{actual}%", showarrow=False, font=dict(size=16, color="black"))
     fig.update_layout(
         margin=dict(l=0, r=0, t=0, b=0),
-        width=90, height=90,
+        width=80, height=80,
         showlegend=False,
-        paper_bgcolor=card_bg
+        paper_bgcolor=bg
     )
     chart_html = fig.to_html(include_plotlyjs="cdn", full_html=False)
 
-    # HTML layout for each card
+    # Card HTML
     card_html = f"""
     <div style="
-        background-color:{card_bg};
-        border-radius:15px;
+        background-color:{bg};
+        border-radius:16px;
         padding:20px;
-        height:310px;
+        height:330px;
         width:100%;
-        box-shadow: 0px 6px 10px rgba(0,0,0,0.08);
+        box-shadow:0 6px 10px rgba(0,0,0,0.08);
         display:flex;
         flex-direction:column;
         justify-content:space-between;
     ">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
             <div style="text-align:left;">
-                <h4 style="margin:0; font-size:14px; font-weight:600; color:#444;">{kpi.upper()}</h4>
-                <h2 style="margin:5px 0 0 0; font-size:42px; font-weight:800; color:#222;">{actual}%</h2>
+                <h4 style="margin:0; font-size:14px; font-weight:700; color:#444;">{kpi.upper()}</h4>
+                <h2 style="margin:8px 0 0 0; font-size:42px; font-weight:800; color:#222;">{actual}%</h2>
             </div>
-            <div style="width:90px;">{chart_html}</div>
+            <div style="margin-top:5px; width:85px;">{chart_html}</div>
         </div>
 
-        <hr style="border:none; border-top:1px solid #ddd; margin:10px 0;">
+        <hr style="border:none; border-top:1px solid #ddd; margin:10px 0 15px 0;">
 
-        <div style="text-align:left;">
-            <p style="margin:4px 0; font-size:16px;"><b>Target:</b> <span style="float:right;">{target}%</span></p>
-            <p style="margin:4px 0; font-size:16px;"><b>Variance:</b> 
-            <span style="float:right; color:{variance_color};">{variance:+.1f}%</span></p>
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:16px;">
+            <p style="margin:0;"><b>Target:</b> {target}%</p>
+            <p style="margin:0;"><b>Variance:</b> 
+            <span style="color:{variance_color};">{variance:+.1f}%</span></p>
         </div>
 
-        <div style="margin-top:8px; text-align:center;">
+        <div style="text-align:center; margin-top:18px;">
             <button style="
                 border:2px solid {accent};
                 background-color:transparent;
