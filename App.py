@@ -4,17 +4,17 @@ import requests
 from io import BytesIO
 import plotly.graph_objects as go
 
-# -------------------------------------
+# -----------------------------
 # PAGE CONFIG
-# -------------------------------------
+# -----------------------------
 st.set_page_config(page_title="Garment Production Dashboard", layout="wide")
 
 # GitHub Excel link
 GITHUB_EXCEL_URL = "https://github.com/Mahie357/garment-dashboard/raw/refs/heads/main/garment_data.xlsx"
 
-# -------------------------------------
-# LOAD DATA FUNCTION
-# -------------------------------------
+# -----------------------------
+# LOAD DATA
+# -----------------------------
 @st.cache_data(ttl=60)
 def load_data():
     try:
@@ -22,43 +22,29 @@ def load_data():
         response.raise_for_status()
         df = pd.read_excel(BytesIO(response.content))
     except Exception as e:
-        st.warning(f"⚠️ Could not load Excel from GitHub. Using demo data. Error: {e}")
+        st.warning(f"⚠️ Could not load Excel from GitHub. Using sample demo data. Error: {e}")
         df = pd.DataFrame({
             "KPI": ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"],
             "Actual": [90, 68, 3.5],
             "Target": [95, 70, 2.0],
         })
 
-    # Normalize column names
+    # Clean and normalize
     df.columns = [c.strip().upper() for c in df.columns]
-    required = {"KPI", "ACTUAL", "TARGET"}
-    if not required.issubset(df.columns):
-        raise ValueError(f"Missing columns in Excel. Found: {list(df.columns)}")
-
-    # Clean and uppercase values
     df["KPI"] = df["KPI"].astype(str).str.strip().str.upper()
     df["ACTUAL"] = pd.to_numeric(df["ACTUAL"], errors="coerce").fillna(0)
     df["TARGET"] = pd.to_numeric(df["TARGET"], errors="coerce").fillna(0)
 
-    # Ensure order even if Excel order differs
+    # Keep correct order
     order = ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"]
-    data_ordered = []
-    for k in order:
-        subset = df[df["KPI"].str.upper() == k]
-        if not subset.empty:
-            data_ordered.append(subset)
-        else:
-            # Fill missing KPI with placeholder if absent
-            data_ordered.append(pd.DataFrame({
-                "KPI": [k], "ACTUAL": [0], "TARGET": [0]
-            }))
-    return pd.concat(data_ordered).reset_index(drop=True)
+    df = pd.concat([df[df["KPI"] == k] for k in order]).reset_index(drop=True)
+    return df
 
 df = load_data()
 
-# -------------------------------------
-# HEADER SECTION
-# -------------------------------------
+# -----------------------------
+# HEADER
+# -----------------------------
 st.markdown("""
 <div style="text-align:center; margin-bottom:20px;">
   <h1 style="font-size:45px; font-weight:800; margin-bottom:0;">Garment Production Dashboard</h1>
@@ -66,16 +52,16 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# -------------------------------------
+# -----------------------------
 # REFRESH BUTTON
-# -------------------------------------
+# -----------------------------
 if st.button("🔄 Refresh Data"):
     st.cache_data.clear()
     st.rerun()
 
-# -------------------------------------
-# GAUGE CHART FUNCTION
-# -------------------------------------
+# -----------------------------
+# KPI GAUGE FUNCTION
+# -----------------------------
 def gauge_chart(value, color):
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
@@ -85,15 +71,17 @@ def gauge_chart(value, color):
             'axis': {'range': [0, 100], 'visible': False},
             'bar': {'color': color, 'thickness': 0.3},
             'bgcolor': "white",
-            'steps': [{'range': [0, 100], 'color': "#f0f0f0"}],
-        }
+            'borderwidth': 0,
+            'steps': [{'range': [0, 100], 'color': "#f5f5f5"}],
+        },
+        domain={'x': [0, 1], 'y': [0, 1]},
     ))
-    fig.update_layout(height=150, margin=dict(l=0, r=0, t=0, b=0))
+    fig.update_layout(height=140, margin=dict(l=0, r=0, t=0, b=0))
     return fig
 
-# -------------------------------------
+# -----------------------------
 # KPI CARDS
-# -------------------------------------
+# -----------------------------
 col1, col2, col3 = st.columns(3)
 bg_colors = ["#FFEAEA", "#FFF6DA", "#FFEAEA"]
 ring_colors = ["#E63946", "#FFB703", "#E63946"]
@@ -108,6 +96,7 @@ for col, rec, bg, color in zip([col1, col2, col3], df.to_dict("records"), bg_col
 
     with col:
         with st.container():
+            # Full card container
             st.markdown(
                 f"""
                 <div style="
@@ -115,7 +104,7 @@ for col, rec, bg, color in zip([col1, col2, col3], df.to_dict("records"), bg_col
                     padding:25px;
                     border-radius:20px;
                     box-shadow:0 2px 6px rgba(0,0,0,0.1);
-                    height:410px;
+                    height:440px;
                     display:flex;
                     flex-direction:column;
                     justify-content:space-between;">
@@ -126,9 +115,11 @@ for col, rec, bg, color in zip([col1, col2, col3], df.to_dict("records"), bg_col
                 unsafe_allow_html=True
             )
 
-            # Add gauge chart inside card
-            st.plotly_chart(gauge_chart(actual, color), use_container_width=True)
+            # Gauge chart
+            gauge = gauge_chart(actual, color)
+            st.plotly_chart(gauge, use_container_width=True, config={"displayModeBar": False})
 
+            # KPI values and buttons
             st.markdown(
                 f"""
                 <div style="text-align:left;">
