@@ -1,4 +1,4 @@
-# App.py  — tolerant loader + exact tile layout
+# App.py  — tolerant loader + exact tile layout (robust KPI match + Lost Time variance color)
 
 import math
 import pandas as pd
@@ -8,7 +8,7 @@ from streamlit.components.v1 import html as st_html
 st.set_page_config(page_title="Garment Production Dashboard", layout="wide")
 
 # ---------- tolerant column detection ----------
-def _norm(s):  # normalize for matching
+def _norm(s):  # normalize for matching column names
     return str(s).strip().lower().replace(" ", "").replace("_", "")
 
 def _find_col(cols, candidates):
@@ -68,46 +68,59 @@ def read_any_excel(path="garment_data.xlsx"):
     except Exception:
         return None
 
+# normalize KPI labels for row matching (remove all non-alphanumerics)
+def norm_key(s: str) -> str:
+    s = str(s).upper()
+    return "".join(ch for ch in s if ch.isalnum())
+
 def load_data():
     df = read_any_excel("garment_data.xlsx")
     if df is None:
         # Fallback demo dataset so you can see the layout
         df = pd.DataFrame(
             {
-                "KPI": ["PRODUCTIVITY", "EFFICIENCY", "VARIANCE FROM TARGET"],
-                "value": [72, 68, -4],
-                "target": [75, 70, 0],
-                "variance": [-3, -2, -4],
+                "KPI": ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"],
+                "value": [72, 68, 3.5],
+                "target": [75, 70, 2],
+                "variance": [-3, -2, +1.5],
             }
         )
         st.info("Using demo data (couldn’t match columns in garment_data.xlsx).")
 
-    # Normalize keys
-    df["KPI"] = df["KPI"].astype(str).str.upper().str.strip()
-    want = ["PRODUCTIVITY", "EFFICIENCY", "VARIANCE FROM TARGET"]
+    # Normalize KPI text and build a fast lookup on normalized key
+    df["KPI"] = df["KPI"].astype(str).str.strip()
+    df["KEY"] = df["KPI"].apply(norm_key)
+
+    want_titles = ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"]
+    want_map = {t: norm_key(t) for t in want_titles}
 
     out = {}
-    for k in want:
-        r = df[df["KPI"] == k]
+    for title, key in want_map.items():
+        r = df[df["KEY"] == key]
         if r.empty:
-            # try fuzzy contains
-            r = df[df["KPI"].str.contains(k, na=False)]
-        if r.empty:
-            out[k] = {"value": 0.0, "target": 0.0, "variance": 0.0}
+            out[title] = {"value": 0.0, "target": 0.0, "variance": 0.0}
         else:
             row = r.iloc[0]
             def f(v):
-                try: return float(v)
-                except: return 0.0
-            out[k] = {"value": f(row["value"]), "target": f(row["target"]), "variance": f(row["variance"])}
+                try:
+                    return float(v)
+                except:
+                    return 0.0
+            out[title] = {
+                "value": f(row["value"]),
+                "target": f(row["target"]),
+                "variance": f(row["variance"]),
+            }
     return out
 
 D = load_data()
 
 # ---------- helpers ----------
 def clamp_pct(p):
-    try: return max(0.0, min(100.0, float(p)))
-    except: return 0.0
+    try:
+        return max(0.0, min(100.0, float(p)))
+    except:
+        return 0.0
 
 def donut_svg(value_pct, ring_color, track="#EFEFEF", size=92, stroke=10, label_text=None):
     pct = clamp_pct(abs(value_pct))  # gauge fill uses absolute
@@ -117,7 +130,7 @@ def donut_svg(value_pct, ring_color, track="#EFEFEF", size=92, stroke=10, label_
     gap = 0.03 * full
     value_len = (pct / 100.0) * (full - gap)
 
-    label = f"{value_pct:+.0f}%" if label_text is None else label_text
+    label = f"{value_pct:.0f}%" if label_text is None else label_text
 
     return f"""
     <svg width="{size}" height="{size}" viewBox="0 0 {size} {size}">
@@ -131,10 +144,16 @@ def donut_svg(value_pct, ring_color, track="#EFEFEF", size=92, stroke=10, label_
     </svg>
     """
 
-def card_html(title, value, target, variance, bg, ring, btn):
-    val_str = f"{value:.0f}%" if title != "VARIANCE FROM TARGET" else f"{value:+.0f}%"
+def card_html(title, value, target, variance, bg, ring, btn, invert_bad=False):
+    """invert_bad=True makes positive variance red (for metrics where lower is better, e.g., Lost Time)."""
+    val_str = f"{value:.0f}%"
     donut_label = val_str
-    var_color = "#D92D20" if variance < 0 else "#05603A"
+
+    if invert_bad:
+        var_color = "#D92D20" if variance > 0 else "#05603A"  # positive = bad
+    else:
+        var_color = "#D92D20" if variance < 0 else "#05603A"  # negative = bad
+
     return f"""
     <div class="kpi-card" style="--card-bg:{bg}; --ring-color:{ring}; --btn-color:{btn}">
       <div class="kpi-top">
@@ -145,7 +164,7 @@ def card_html(title, value, target, variance, bg, ring, btn):
       <div class="kpi-divider"></div>
       <div class="kpi-meta">
         <div><span class="label">Target:</span> <b>{target:.0f}%</b></div>
-        <div><span class="label">Variance:</span> <b style="color:{var_color};">{variance:+.0f}%</b></div>
+        <div><span class="label">Variance:</span> <b style="color:{var_color};">{variance:+.1f}%</b></div>
       </div>
       <div class="kpi-btn"><button>Drill Down</button></div>
     </div>
@@ -197,21 +216,39 @@ amber_bg = "#FFF2CC"
 amber_ring = "#F4A300"
 
 cards = []
-cards.append(card_html("PRODUCTIVITY",
-                       D["PRODUCTIVITY"]["value"],
-                       D["PRODUCTIVITY"]["target"],
-                       D["PRODUCTIVITY"]["variance"],
-                       pink_bg, red_ring, red_ring))
-cards.append(card_html("EFFICIENCY",
-                       D["EFFICIENCY"]["value"],
-                       D["EFFICIENCY"]["target"],
-                       D["EFFICIENCY"]["variance"],
-                       amber_bg, amber_ring, amber_ring))
-cards.append(card_html("VARIANCE FROM TARGET",
-                       D["VARIANCE FROM TARGET"]["value"],
-                       D["VARIANCE FROM TARGET"]["target"],
-                       D["VARIANCE FROM TARGET"]["variance"],
-                       pink_bg, red_ring, red_ring))
+# 1) Plan Vs Actual
+cards.append(
+    card_html(
+        "PLAN VS ACTUAL",
+        D["PLAN VS ACTUAL"]["value"],
+        D["PLAN VS ACTUAL"]["target"],
+        D["PLAN VS ACTUAL"]["variance"],
+        pink_bg, red_ring, red_ring,
+        invert_bad=False,
+    )
+)
+# 2) Efficiency
+cards.append(
+    card_html(
+        "EFFICIENCY",
+        D["EFFICIENCY"]["value"],
+        D["EFFICIENCY"]["target"],
+        D["EFFICIENCY"]["variance"],
+        amber_bg, amber_ring, amber_ring,
+        invert_bad=False,
+    )
+)
+# 3) Lost Time (lower is better → invert variance color)
+cards.append(
+    card_html(
+        "LOST TIME",
+        D["LOST TIME"]["value"],
+        D["LOST TIME"]["target"],
+        D["LOST TIME"]["variance"],
+        pink_bg, red_ring, red_ring,
+        invert_bad=True,
+    )
+)
 
 page = f"""{CSS}<div class="kpi-grid">{cards[0]}{cards[1]}{cards[2]}</div>"""
 st_html(page, height=1000, scrolling=False)
