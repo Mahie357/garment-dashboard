@@ -51,7 +51,7 @@ for i, row in df.iterrows():
         value=actual,
         gauge={
             "axis": {"range": [0, 100], "visible": False},
-            "bar": {"color": accent, "thickness": 0.2},
+            "bar": {"color": accent, "thickness": 0.25},
             "bgcolor": "#f5f5f5",
             "borderwidth": 0,
             "steps": [{"range": [0, target], "color": "#f2f2f2"}],
@@ -59,8 +59,8 @@ for i, row in df.iterrows():
         domain={'x': [0, 1], 'y': [0, 1]}
     ))
     gauge.update_layout(
-        width=100,
-        height=100,
+        width=90,
+        height=90,
         margin=dict(l=0, r=0, t=0, b=0),
         paper_bgcolor=card_colors[kpi],
     )
@@ -73,72 +73,41 @@ for i, row in df.iterrows():
                 background-color:{card_colors[kpi]};
                 border-radius:20px;
                 box-shadow:0px 4px 10px rgba(0,0,0,0.1);
-                padding:20px;
+                padding:20px 20px 15px 20px;
+                height:310px;
                 position:relative;
-                height:290px;
                 text-align:center;
             ">
-                <!-- KPI Title -->
-                <div style="text-align:left;">
-                    <h4 style="color:#1E1E1E; font-size:16px; margin:0; text-transform:uppercase;">
-                        {kpi}
-                    </h4>
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <h4 style="color:#1E1E1E; font-size:16px; margin:0; text-transform:uppercase;">{kpi}</h4>
+                    <div style="width:85px;">{gauge.to_html(include_plotlyjs=False, full_html=False)}</div>
                 </div>
-            """,
-            unsafe_allow_html=True
-        )
 
-        # Place gauge top-right (smaller)
-        gauge_html = gauge.to_html(include_plotlyjs="cdn", full_html=False)
-        st.markdown(
-            f"""
-            <div style="position:absolute; top:15px; right:15px; width:85px;">
-                {gauge_html}
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+                <div style="margin-top:15px;">
+                    <h2 style="font-weight:800; font-size:38px; margin:5px 0; color:#1E1E1E;">{actual}%</h2>
+                </div>
 
-        # Main KPI number
-        st.markdown(
-            f"""
-            <div style="margin-top:60px;">
-                <h2 style="font-weight:800; font-size:40px; margin:0; color:#1E1E1E;">{actual}%</h2>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+                <div style="display:flex; justify-content:space-around; margin-top:15px;">
+                    <p style="margin:0; font-size:15px;">🎯 <b>Target:</b> {target}%</p>
+                    <p style="margin:0; font-size:15px;">📉 <b>Variance:</b> <span style="color:{color};">{variance:+.1f}%</span></p>
+                </div>
 
-        # Target and variance side by side
-        st.markdown(
-            f"""
-            <div style="display:flex; justify-content:space-around; margin-top:15px;">
-                <p style="margin:0; font-size:15px;">🎯 <b>Target:</b> {target}%</p>
-                <p style="margin:0; font-size:15px;">📉 <b>Variance:</b> <span style="color:{color};">{variance:+.1f}%</span></p>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        # Drill Down button
-        st.markdown(
-            f"""
-            <div style="text-align:center; margin-top:25px;">
-                <button style="
-                    background-color:white;
-                    color:{accent};
-                    border:2px solid {accent};
-                    border-radius:8px;
-                    padding:6px 25px;
-                    font-weight:600;
-                    cursor:pointer;
-                    transition:0.3s;
-                " 
-                onmouseover="this.style.backgroundColor='{accent}'; this.style.color='white';"
-                onmouseout="this.style.backgroundColor='white'; this.style.color='{accent}';">
-                Drill Down
-                </button>
-            </div>
+                <div style="text-align:center; margin-top:25px;">
+                    <button style="
+                        background-color:white;
+                        color:{accent};
+                        border:2px solid {accent};
+                        border-radius:8px;
+                        padding:6px 25px;
+                        font-weight:600;
+                        cursor:pointer;
+                        transition:0.3s;
+                    " 
+                    onmouseover="this.style.backgroundColor='{accent}'; this.style.color='white';"
+                    onmouseout="this.style.backgroundColor='white'; this.style.color='{accent}';">
+                    Drill Down
+                    </button>
+                </div>
             </div>
             """,
             unsafe_allow_html=True
