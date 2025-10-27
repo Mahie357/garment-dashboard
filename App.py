@@ -104,7 +104,7 @@ def donut_svg(value_pct, ring_color, track="#EFEFEF", size=120, stroke=12, label
     cx = cy = size // 2
     r = (size - stroke) // 2
     full = 2 * math.pi * r
-    gap = 0.06 * full
+    gap = 0.03 * full
     value_len = (pct / 100.0) * (full - gap)
     label = f"{value_pct:.0f}%" if label_text is None else label_text
 
@@ -168,8 +168,9 @@ CSS = """
   display:flex;
   align-items:flex-start;
   justify-content:space-between;
-  margin-top:-6px;
+  margin-top:-4px;
 }
+/* 🔧 ADJUSTMENT AREA STARTS HERE */
 .kpi-title{
   font-family:var(--font);
   font-size:16px;
@@ -177,12 +178,12 @@ CSS = """
   font-weight:700;
   color:#3A3A3A;
   text-transform:uppercase;
-  margin-top:-6px;
+  margin-top:-8px; /* moved up slightly */
 }
 .kpi-ring-wrap{
   width:120px;
   height:120px;
-  margin-top:-8px;
+  margin-top:6px; /* moved down slightly */
 }
 .kpi-value{
   font-family:var(--font);
@@ -190,9 +191,10 @@ CSS = """
   font-weight:800;
   color:#121212;
   line-height:1;
-  margin-top:-22px; /* moved up */
+  margin-top:-28px; /* moved further up */
   text-align:left;
 }
+/* 🔧 ADJUSTMENT AREA ENDS HERE */
 .kpi-divider{
   height:1px;
   width:100%;
