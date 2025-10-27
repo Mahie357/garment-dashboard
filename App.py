@@ -5,88 +5,67 @@ from io import BytesIO
 import plotly.graph_objects as go
 
 # -----------------------------
-# CONFIG
+# PAGE CONFIG
 # -----------------------------
 st.set_page_config(page_title="Garment Production Dashboard", layout="wide")
 
-GITHUB_EXCEL_URL = (
-    "https://github.com/Mahie357/garment-dashboard/raw/refs/heads/main/garment_data.xlsx"
-)
-
-TITLE_HTML = """
-<div style="text-align:center; margin-bottom:20px;">
-  <h1 style="font-size:45px; font-weight:800; margin-bottom:0;">
-    Garment Production Dashboard
-  </h1>
-  <p style="font-size:17px; color:gray;">
-    High-level KPIs and trends for quick status checks (Owner’s View)
-  </p>
-</div>
-"""
+# GitHub Excel link
+GITHUB_EXCEL_URL = "https://github.com/Mahie357/garment-dashboard/raw/refs/heads/main/garment_data.xlsx"
 
 # -----------------------------
-# DATA
+# LOAD DATA FUNCTION
 # -----------------------------
 @st.cache_data(ttl=60)
 def load_data():
     try:
-        r = requests.get(GITHUB_EXCEL_URL, timeout=20)
-        r.raise_for_status()
-        df = pd.read_excel(BytesIO(r.content))
+        response = requests.get(GITHUB_EXCEL_URL, timeout=15)
+        response.raise_for_status()
+        df = pd.read_excel(BytesIO(response.content))
     except Exception as e:
-        st.warning(
-            f"⚠️ Could not load Excel from GitHub. Using sample demo data. Error: {e}"
-        )
+        st.warning(f"⚠️ Could not load Excel from GitHub. Using sample data. Error: {e}")
         df = pd.DataFrame({
             "KPI": ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"],
             "Actual": [90, 68, 3.5],
             "Target": [95, 70, 2.0],
         })
+    
+    # Normalize columns
+    df.columns = [c.strip().upper() for c in df.columns]
+    if not {"KPI", "ACTUAL", "TARGET"}.issubset(df.columns):
+        raise ValueError(f"Excel must contain columns: KPI, Actual, Target. Found: {list(df.columns)}")
 
-    # normalize columns (remove spaces, upper-case)
-    df.columns = [str(c).strip().upper() for c in df.columns]
-    # keep only the columns we need if available
-    need = {"KPI", "ACTUAL", "TARGET"}
-    missing = need - set(df.columns)
-    if missing:
-        raise ValueError(f"Missing required columns in Excel: {missing}")
+    df["KPI"] = df["KPI"].astype(str).str.strip().str.upper()
+    df["ACTUAL"] = pd.to_numeric(df["ACTUAL"], errors="coerce").fillna(0)
+    df["TARGET"] = pd.to_numeric(df["TARGET"], errors="coerce").fillna(0)
 
-    # force numeric for safety
-    df["ACTUAL"] = pd.to_numeric(df["ACTUAL"], errors="coerce").fillna(0.0)
-    df["TARGET"] = pd.to_numeric(df["TARGET"], errors="coerce").fillna(0.0)
-
-    # ensure 3 cards in the order we want
+    # Maintain consistent order
     order = ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"]
-    df["KPI"] = df["KPI"].str.strip().str.upper()
     df = pd.concat([df[df["KPI"] == k] for k in order]).reset_index(drop=True)
-
-    # if any missing, pad with zeros so layout still holds
-    if len(df) < 3:
-        for k in order:
-            if not (df["KPI"] == k).any():
-                df = pd.concat(
-                    [df, pd.DataFrame([{"KPI": k, "ACTUAL": 0.0, "TARGET": 0.0}])]
-                )
-        df = df.reset_index(drop=True)
-
     return df
 
 df = load_data()
 
 # -----------------------------
-# HEADER + REFRESH
+# DASHBOARD HEADER
 # -----------------------------
-st.markdown(TITLE_HTML, unsafe_allow_html=True)
+st.markdown("""
+<div style="text-align:center; margin-bottom:20px;">
+  <h1 style="font-size:45px; font-weight:800; margin-bottom:0;">Garment Production Dashboard</h1>
+  <p style="font-size:17px; color:gray;">High-level KPIs and trends for quick status checks (Owner’s View)</p>
+</div>
+""", unsafe_allow_html=True)
 
+# -----------------------------
+# REFRESH BUTTON
+# -----------------------------
 if st.button("🔄 Refresh Data"):
     st.cache_data.clear()
     st.rerun()
 
 # -----------------------------
-# GAUGE
+# KPI GAUGE CREATOR
 # -----------------------------
-def gauge_html(value, color, label):
-    """Return Plotly gauge as HTML string (small, clean)."""
+def create_gauge(value, color):
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=value,
@@ -99,27 +78,26 @@ def gauge_html(value, color, label):
             'steps': [{'range': [0, 100], 'color': "#f5f5f5"}],
         },
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': label, 'font': {'size': 16}}
     ))
-    fig.update_layout(height=180, margin=dict(l=0, r=0, t=20, b=0))
+    fig.update_layout(height=180, margin=dict(l=0, r=0, t=10, b=0))
     return fig.to_html(include_plotlyjs="cdn", full_html=False)
 
 # -----------------------------
-# LAYOUT
+# KPI CARD LAYOUT
 # -----------------------------
 col1, col2, col3 = st.columns(3, gap="large")
 kpi_colors = ["#E63946", "#FFB703", "#E63946"]
-bg_colors  = ["#FFEAEA", "#FFF6DA", "#FFEAEA"]
+bg_colors = ["#FFEAEA", "#FFF6DA", "#FFEAEA"]
 
-records = df.to_dict("records")  # safe, dict-based access
+records = df.to_dict("records")
 
 for col, rec, color, bg in zip([col1, col2, col3], records, kpi_colors, bg_colors):
-    kpi     = str(rec.get("KPI", "")).upper()
-    actual  = float(rec.get("ACTUAL", 0.0))
-    target  = float(rec.get("TARGET", 0.0))
+    kpi = rec["KPI"]
+    actual = rec["ACTUAL"]
+    target = rec["TARGET"]
     variance = actual - target
-    var_txt  = f"+{variance:.1f}%" if variance > 0 else f"{variance:.1f}%"
-    var_col  = "green" if variance > 0 else "#E63946"
+    variance_text = f"+{variance:.1f}%" if variance > 0 else f"{variance:.1f}%"
+    variance_color = "green" if variance > 0 else "#E63946"
 
     with col:
         st.markdown(
@@ -134,26 +112,27 @@ for col, rec, color, bg in zip([col1, col2, col3], records, kpi_colors, bg_color
                 flex-direction:column;
                 justify-content:space-between;">
                 
-                <!-- top -->
+                <!-- TOP -->
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <h4 style="margin:0; font-weight:800;">{kpi}</h4>
-                    <div style="width:120px;">{gauge_html(actual, color, kpi)}</div>
+                    <div style="width:120px;">{create_gauge(actual, color)}</div>
                 </div>
 
-                <!-- actual -->
+                <!-- ACTUAL -->
                 <div style="text-align:left; margin-top:10px;">
                     <h2 style="font-size:48px; font-weight:800; margin:5px 0;">{actual:.1f}%</h2>
                 </div>
 
                 <hr style="border:1px solid #ddd; margin:8px 0;"/>
 
-                <!-- target & variance -->
+                <!-- TARGET & VARIANCE -->
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <p style="margin:0; font-size:16px;"><b>Target:</b> {target:.1f}%</p>
-                    <p style="margin:0; font-size:16px;"><b>Variance:</b> <span style="color:{var_col};">{var_txt}</span></p>
+                    <p style="margin:0; font-size:16px;"><b>Variance:</b> 
+                    <span style="color:{variance_color};">{variance_text}</span></p>
                 </div>
 
-                <!-- button -->
+                <!-- BUTTON -->
                 <div style="text-align:center; margin-top:15px;">
                     <button style="
                         background-color:white;
