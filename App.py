@@ -13,11 +13,11 @@ data = {
 }
 df = pd.DataFrame(data)
 
-# --- Custom Card Colors ---
+# --- Card Theme Colors ---
 card_colors = {
-    "Productivity": "#ffe5e5",
-    "Efficiency": "#fff6e5",
-    "Lost Time": "#ffe5e5"
+    "Productivity": "#FFE6E6",
+    "Efficiency": "#FFF7E6",
+    "Lost Time": "#FFE6E6"
 }
 
 # --- Page Title ---
@@ -30,7 +30,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- KPI Layout ---
+# --- Create 3 Columns ---
 cols = st.columns(3)
 
 for idx, row in df.iterrows():
@@ -38,59 +38,69 @@ for idx, row in df.iterrows():
     actual = row["Actual"]
     target = row["Target"]
     variance = round(actual - target, 1)
-    color = "green" if variance >= 0 else "red"
+    color = "#00B050" if variance >= 0 else "#E60000"
 
-    # --- Create Circular Gauge (compatible with Streamlit Cloud) ---
+    # --- Create a Custom Gauge ---
     fig = go.Figure()
 
     fig.add_trace(go.Indicator(
         mode="gauge+number",
         value=actual,
-        number={'suffix': "%", "font": {"size": 48, "color": "#444"}},
-        title={'text': kpi, 'font': {'size': 20, 'color': '#333'}},
+        number={
+            'suffix': "%",
+            'font': {'size': 48, 'color': '#333', 'family': "Arial Black"}
+        },
+        title={'text': f"{kpi}", 'font': {'size': 20, 'color': '#444'}},
         gauge={
-            'axis': {'range': [0, 100]},
-            'bar': {'color': '#ff4b4b'},
-            'bgcolor': "white",
+            'axis': {'range': [0, 100], 'tickfont': {'size': 10}, 'tickcolor': 'gray'},
+            'bar': {'color': '#ff4b4b', 'thickness': 0.25},
+            'bgcolor': "#fefefe",
             'borderwidth': 1,
-            'bordercolor': "#DDD",
+            'bordercolor': "#ddd",
             'steps': [
-                {'range': [0, target], 'color': '#ffeeee'},
+                {'range': [0, target], 'color': '#ffeaea'},
                 {'range': [target, 100], 'color': '#f7f7f7'}
             ]
-        }
+        },
+        domain={'x': [0, 1], 'y': [0, 1]}
     ))
 
-    # Make it look like a half-donut using layout range
+    # --- Format Layout to be Centered & Semi-Circular ---
     fig.update_layout(
-        height=300,
-        margin=dict(l=10, r=10, t=50, b=0),
+        height=250,
+        margin=dict(l=5, r=5, t=40, b=0),
         paper_bgcolor=card_colors[kpi],
     )
 
+    # --- Card Layout ---
     with cols[idx]:
-        # Card Header
         st.markdown(
             f"""
             <div style='background-color:{card_colors[kpi]};
-                        padding:20px;
-                        border-radius:25px;
-                        box-shadow:0px 4px 15px rgba(0,0,0,0.1);
-                        text-align:center;'>
-                <h3 style='margin-bottom:0px; color:#333;'>{kpi}</h3>
+                        padding:25px;
+                        border-radius:20px;
+                        box-shadow:0px 4px 15px rgba(0,0,0,0.08);
+                        text-align:center;
+                        margin-bottom:20px;'>
+                <h2 style='margin-bottom:15px; color:#333;'>{kpi}</h2>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        # Chart
         st.plotly_chart(fig, use_container_width=True)
 
-        # KPI Details
-        st.markdown(f"🎯 **Target:** {target}%", unsafe_allow_html=True)
-        st.markdown(f"📉 **Variance:** <span style='color:{color}'>{variance:+.1f}%</span>", unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div style='text-align:center; line-height:1.8;'>
+                🎯 <b>Target:</b> {target}%<br>
+                📉 <b>Variance:</b> <span style='color:{color}'>{variance:+.1f}%</span>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-        # Button Styling
+        # --- Button Style ---
         st.markdown(
             """
             <style>
@@ -100,7 +110,8 @@ for idx, row in df.iterrows():
                     color: #ff4b4b;
                     background: white;
                     font-weight: 600;
-                    width: 50%;
+                    width: 60%;
+                    margin-top: 15px;
                 }
                 div[data-testid="stButton"] button:hover {
                     background-color: #ff4b4b;
@@ -110,6 +121,4 @@ for idx, row in df.iterrows():
             """,
             unsafe_allow_html=True
         )
-
         st.button("Drill Down", key=kpi)
-
