@@ -1,204 +1,217 @@
-import streamlit as st
+# App.py  — tolerant loader + exact tile layout
+
+import math
 import pandas as pd
-import requests
-from io import BytesIO
-from streamlit.components.v1 import html
+import streamlit as st
+from streamlit.components.v1 import html as st_html
 
 st.set_page_config(page_title="Garment Production Dashboard", layout="wide")
 
-# ---- GitHub Excel (raw) ----
-EXCEL_URL = "https://github.com/Mahie357/garment-dashboard/raw/refs/heads/main/garment_data.xlsx"
+# ---------- tolerant column detection ----------
+def _norm(s):  # normalize for matching
+    return str(s).strip().lower().replace(" ", "").replace("_", "")
 
+def _find_col(cols, candidates):
+    cols_n = {_norm(c): c for c in cols}
+    for cand in candidates:
+        key = _norm(cand)
+        if key in cols_n:
+            return cols_n[key]
+    # fuzzy: contains any candidate substring
+    for c in cols:
+        c_n = _norm(c)
+        if any(_norm(x) in c_n for x in candidates):
+            return c
+    return None
 
-# -----------------------------
-# Data loader
-# -----------------------------
-@st.cache_data(ttl=60)
-def load_data_from_github():
+def read_any_excel(path="garment_data.xlsx"):
+    # Try normal read
     try:
-        r = requests.get(EXCEL_URL, timeout=20)
-        r.raise_for_status()
-        df = pd.read_excel(BytesIO(r.content))
-    except Exception as e:
-        st.error(f"Could not load Excel from GitHub. Using sample data. Error: {e}")
+        df = pd.read_excel(path)
+        if df.empty or df.columns.size == 0:
+            raise ValueError("Empty sheet")
+    except Exception:
+        return None
+
+    # Try to detect the 3 columns (many plausible aliases allowed)
+    kpi_col = _find_col(
+        df.columns,
+        ["kpi", "metric", "name", "measure", "indicator", "category", "title"],
+    )
+    val_col = _find_col(
+        df.columns,
+        ["value", "current", "actual", "result", "score", "percent"],
+    )
+    tgt_col = _find_col(
+        df.columns,
+        ["target", "goal", "plan", "benchmark"],
+    )
+    var_col = _find_col(
+        df.columns,
+        ["variance", "var", "diff", "delta", "gap"],
+    )
+
+    if not kpi_col and df.shape[1] >= 1:
+        kpi_col = df.columns[0]
+    if not val_col and df.shape[1] >= 2:
+        val_col = df.columns[1]
+    if not tgt_col and df.shape[1] >= 3:
+        tgt_col = df.columns[2]
+    if not var_col and df.shape[1] >= 4:
+        var_col = df.columns[3]
+
+    # Ensure we have something usable
+    try:
+        df2 = df[[kpi_col, val_col, tgt_col, var_col]].copy()
+        df2.columns = ["KPI", "value", "target", "variance"]
+        return df2
+    except Exception:
+        return None
+
+def load_data():
+    df = read_any_excel("garment_data.xlsx")
+    if df is None:
+        # Fallback demo dataset so you can see the layout
         df = pd.DataFrame(
             {
-                "KPI": ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"],
-                "ACTUAL": [90, 68, 3.5],
-                "TARGET": [95, 70, 2],
+                "KPI": ["PRODUCTIVITY", "EFFICIENCY", "VARIANCE FROM TARGET"],
+                "value": [72, 68, -4],
+                "target": [75, 70, 0],
+                "variance": [-3, -2, -4],
             }
         )
+        st.info("Using demo data (couldn’t match columns in garment_data.xlsx).")
 
-    # Normalize columns
-    df.columns = df.columns.str.strip().str.upper()
-    for col in ["KPI", "ACTUAL", "TARGET"]:
-        if col not in df.columns:
-            df[col] = 0
-
+    # Normalize keys
     df["KPI"] = df["KPI"].astype(str).str.upper().str.strip()
-    df["ACTUAL"] = pd.to_numeric(df["ACTUAL"], errors="coerce").fillna(0)
-    df["TARGET"] = pd.to_numeric(df["TARGET"], errors="coerce").fillna(0)
+    want = ["PRODUCTIVITY", "EFFICIENCY", "VARIANCE FROM TARGET"]
 
-    # Ensure all three KPIs exist in the right order
-    wanted = ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"]
-    rows = []
-    for w in wanted:
-        m = df[df["KPI"] == w]
-        if m.empty:
-            rows.append(pd.Series({"KPI": w, "ACTUAL": 0.0, "TARGET": 0.0}))
+    out = {}
+    for k in want:
+        r = df[df["KPI"] == k]
+        if r.empty:
+            # try fuzzy contains
+            r = df[df["KPI"].str.contains(k, na=False)]
+        if r.empty:
+            out[k] = {"value": 0.0, "target": 0.0, "variance": 0.0}
         else:
-            rows.append(m.iloc[0])
-    df2 = pd.DataFrame(rows)
-    return df2
+            row = r.iloc[0]
+            def f(v):
+                try: return float(v)
+                except: return 0.0
+            out[k] = {"value": f(row["value"]), "target": f(row["target"]), "variance": f(row["variance"])}
+    return out
 
+D = load_data()
 
-df = load_data_from_github()
+# ---------- helpers ----------
+def clamp_pct(p):
+    try: return max(0.0, min(100.0, float(p)))
+    except: return 0.0
 
-# -----------------------------
-# Header
-# -----------------------------
+def donut_svg(value_pct, ring_color, track="#EFEFEF", size=92, stroke=10, label_text=None):
+    pct = clamp_pct(abs(value_pct))  # gauge fill uses absolute
+    cx = cy = size // 2
+    r = (size - stroke) // 2
+    full = 2 * math.pi * r
+    gap = 0.03 * full
+    value_len = (pct / 100.0) * (full - gap)
+
+    label = f"{value_pct:+.0f}%" if label_text is None else label_text
+
+    return f"""
+    <svg width="{size}" height="{size}" viewBox="0 0 {size} {size}">
+      <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{track}" stroke-width="{stroke}" stroke-linecap="round"
+              stroke-dasharray="{full-gap} {gap}" transform="rotate(-90 {cx} {cy})" />
+      <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{ring_color}" stroke-width="{stroke}" stroke-linecap="round"
+              stroke-dasharray="{value_len} {full}" transform="rotate(-90 {cx} {cy})" />
+      <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
+            font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
+            font-size="18" font-weight="700" fill="#2F2F2F">{label}</text>
+    </svg>
+    """
+
+def card_html(title, value, target, variance, bg, ring, btn):
+    val_str = f"{value:.0f}%" if title != "VARIANCE FROM TARGET" else f"{value:+.0f}%"
+    donut_label = val_str
+    var_color = "#D92D20" if variance < 0 else "#05603A"
+    return f"""
+    <div class="kpi-card" style="--card-bg:{bg}; --ring-color:{ring}; --btn-color:{btn}">
+      <div class="kpi-top">
+        <div class="kpi-title">{title}</div>
+        <div class="kpi-ring-wrap">{donut_svg(value, ring, "#EEE", 92, 10, donut_label)}</div>
+      </div>
+      <div class="kpi-value">{val_str}</div>
+      <div class="kpi-divider"></div>
+      <div class="kpi-meta">
+        <div><span class="label">Target:</span> <b>{target:.0f}%</b></div>
+        <div><span class="label">Variance:</span> <b style="color:{var_color};">{variance:+.0f}%</b></div>
+      </div>
+      <div class="kpi-btn"><button>Drill Down</button></div>
+    </div>
+    """
+
+# ---------- styles ----------
+CSS = """
+<style>
+:root{
+  --shadow: 0 10px 24px rgba(16,24,40,.06), 0 1px 2px rgba(16,24,40,.05);
+  --radius: 16px;
+  --font: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+}
+*{box-sizing:border-box}
+.kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin-top:6px}
+.kpi-card{position:relative;background:var(--card-bg);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px 22px 20px;min-height:270px;display:flex;flex-direction:column;justify-content:space-between}
+.kpi-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px}
+.kpi-title{font-family:var(--font);font-size:16px;letter-spacing:.02em;font-weight:700;color:#3A3A3A;text-transform:uppercase}
+.kpi-ring-wrap{width:92px;height:92px}
+.kpi-value{font-family:var(--font);font-size:56px;font-weight:800;color:#121212;line-height:1;margin:4px 0 6px}
+.kpi-divider{height:1px;width:100%;background:rgba(0,0,0,.08);margin:6px 0 10px}
+.kpi-meta{display:flex;align-items:center;justify-content:space-between;font-family:var(--font);margin-bottom:10px}
+.kpi-meta .label{color:#475467;font-weight:600;margin-right:6px}
+.kpi-btn{display:flex;justify-content:center;margin-top:6px}
+.kpi-btn button{background:#fff;color:var(--btn-color);border:2px solid var(--btn-color);font-family:var(--font);font-weight:700;font-size:16px;padding:10px 28px;border-radius:12px;box-shadow:0 1px 0 rgba(16,24,40,.05);transition:all .15s ease;cursor:pointer}
+.kpi-btn button:hover{box-shadow:0 4px 10px rgba(16,24,40,.08);transform:translateY(-1px)}
+.block{background:#fff;border-radius:20px;box-shadow:var(--shadow);padding:26px 28px;margin-bottom:22px}
+.h-title{font-family:var(--font);font-size:46px;font-weight:800;margin:0 0 10px;color:#101828}
+.h-sub{font-family:var(--font);font-size:18px;color:#475467;margin:0}
+@media(max-width:1200px){.kpi-grid{grid-template-columns:1fr}.kpi-card{min-height:260px}}
+</style>
+"""
+
+# ---------- header ----------
 st.markdown(
     """
-<div style="text-align:center; margin: 8px 0 24px;">
-  <h1 style="font-size:42px; font-weight:800; margin:0;">Garment Production Dashboard</h1>
-  <p style="font-size:17px; color:gray; margin:6px 0 0;">
-    High-level KPIs and trends for quick status checks (Owner’s View)
-  </p>
+<div class="block">
+  <div class="h-title">Garment Production Dashboard</div>
+  <p class="h-sub">High-level KPIs and trends for quick status checks (Owner’s View).</p>
 </div>
 """,
     unsafe_allow_html=True,
 )
 
-if st.button("🔄 Refresh Data", type="secondary"):
-    st.cache_data.clear()
-    st.rerun()
+# ---------- build cards ----------
+pink_bg  = "#FDECEC"
+red_ring = "#E63946"
+amber_bg = "#FFF2CC"
+amber_ring = "#F4A300"
 
+cards = []
+cards.append(card_html("PRODUCTIVITY",
+                       D["PRODUCTIVITY"]["value"],
+                       D["PRODUCTIVITY"]["target"],
+                       D["PRODUCTIVITY"]["variance"],
+                       pink_bg, red_ring, red_ring))
+cards.append(card_html("EFFICIENCY",
+                       D["EFFICIENCY"]["value"],
+                       D["EFFICIENCY"]["target"],
+                       D["EFFICIENCY"]["variance"],
+                       amber_bg, amber_ring, amber_ring))
+cards.append(card_html("VARIANCE FROM TARGET",
+                       D["VARIANCE FROM TARGET"]["value"],
+                       D["VARIANCE FROM TARGET"]["target"],
+                       D["VARIANCE FROM TARGET"]["variance"],
+                       pink_bg, red_ring, red_ring))
 
-# -----------------------------
-# HTML card renderer
-# -----------------------------
-def kpi_card_html(
-    title: str,
-    actual: float,
-    target: float,
-    bg="#FFEAEA",
-    accent="#E63946",
-    ring_track="#EDEDED",
-) -> str:
-    """
-    Build a self-contained KPI card with a small donut gauge at top-right,
-    big % number, target + variance line, and a button.
-    The donut is SVG so it never escapes the card.
-    """
-    # donut math
-    # small full donut (starts at top)
-    r = 24
-    circumference = 2 * 3.1415926535 * r
-    pct = max(0.0, min(100.0, float(actual)))
-    dash = circumference * (pct / 100.0)
-    gap = circumference - dash
-
-    variance = actual - target
-    variance_txt = f"+{variance:.1f}%" if variance > 0 else f"{variance:.1f}%"
-    variance_color = "#2E7D32" if variance > 0 else "#E63946"
-
-    # card HTML/CSS
-    return f"""
-<style>
-.kpi-card {{
-  background:{bg};
-  border-radius:20px;
-  padding:22px;
-  box-shadow:0 2px 8px rgba(0,0,0,.08);
-  height: 360px;
-  display:flex;
-  flex-direction:column;
-}}
-.kpi-top {{
-  display:flex; justify-content:space-between; align-items:flex-start;
-}}
-.kpi-title {{
-  margin:0; font-weight:800; font-size:22px;
-}}
-.g-wrap {{
-  width:72px; height:72px; position:relative;
-}}
-.g-label {{
-  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-  font-size:13px; font-weight:700; color:#444;
-}}
-hr.kpi-line {{
-  border:none; height:1px; background:#e1e1e1; margin:8px 0 10px;
-}}
-.kpi-primary {{
-  font-size:46px; font-weight:800; margin:6px 0 2px;
-}}
-.kpi-meta {{
-  display:flex; justify-content:space-between; align-items:center;
-  font-size:16px;
-}}
-.kpi-btn {{
-  background:white;
-  border:2px solid {accent};
-  color:{accent};
-  padding:8px 22px;
-  border-radius:10px;
-  font-weight:700;
-  cursor:pointer;
-}}
-</style>
-
-<div class="kpi-card">
-  <div class="kpi-top">
-    <h4 class="kpi-title">{title}</h4>
-
-    <!-- small donut -->
-    <div class="g-wrap">
-      <svg viewBox="0 0 60 60" width="72" height="72" style="transform:rotate(-90deg)">
-        <circle cx="30" cy="30" r="{r}" fill="none" stroke="{ring_track}" stroke-width="8"/>
-        <circle cx="30" cy="30" r="{r}" fill="none" stroke="{accent}"
-                stroke-width="8" stroke-linecap="round"
-                stroke-dasharray="{dash:.2f} {gap:.2f}" />
-      </svg>
-      <div class="g-label">{actual:.1f}%</div>
-    </div>
-  </div>
-
-  <div style="flex:1;"></div>
-
-  <div>
-    <div class="kpi-primary">{actual:.1f}%</div>
-    <hr class="kpi-line" />
-    <div class="kpi-meta">
-      <div><b>Target:</b> {target:.1f}%</div>
-      <div><b>Variance:</b> <span style="color:{variance_color};">{variance_txt}</span></div>
-    </div>
-    <div style="text-align:center; margin-top:14px;">
-      <button class="kpi-btn">Drill Down</button>
-    </div>
-  </div>
-</div>
-"""
-
-
-# -----------------------------
-# Map KPIs to colors & render
-# -----------------------------
-# desired order
-order = ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"]
-bg_colors  = ["#FFEAEA", "#FFF6DA", "#FFEAEA"]
-accents    = ["#E63946", "#FFB703", "#E63946"]
-
-cols = st.columns(3)
-
-for col, kpi_name, bg, acc in zip(cols, order, bg_colors, accents):
-    row = df[df["KPI"] == kpi_name].iloc[0]
-    actual = float(row["ACTUAL"])
-    target = float(row["TARGET"])
-
-    # nice titles
-    title = kpi_name.title()
-
-    with col:
-        card = kpi_card_html(title, actual, target, bg=bg, accent=acc)
-        html(card, height=390)  # one self-contained card
+page = f"""{CSS}<div class="kpi-grid">{cards[0]}{cards[1]}{cards[2]}</div>"""
+st_html(page, height=1000, scrolling=False)
