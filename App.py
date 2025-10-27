@@ -2,160 +2,203 @@ import streamlit as st
 import pandas as pd
 import requests
 from io import BytesIO
-import plotly.graph_objects as go
+from streamlit.components.v1 import html
 
-# -------------------------------
-# PAGE CONFIGURATION
-# -------------------------------
 st.set_page_config(page_title="Garment Production Dashboard", layout="wide")
 
-# Excel File from GitHub
+# ---- GitHub Excel (raw) ----
 EXCEL_URL = "https://github.com/Mahie357/garment-dashboard/raw/refs/heads/main/garment_data.xlsx"
 
-# -------------------------------
-# LOAD DATA
-# -------------------------------
+
+# -----------------------------
+# Data loader
+# -----------------------------
 @st.cache_data(ttl=60)
-def load_data():
+def load_data_from_github():
     try:
-        r = requests.get(EXCEL_URL, timeout=15)
+        r = requests.get(EXCEL_URL, timeout=20)
         r.raise_for_status()
         df = pd.read_excel(BytesIO(r.content))
     except Exception as e:
-        st.error(f"Error loading Excel: {e}")
-        df = pd.DataFrame({
-            "KPI": ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"],
-            "ACTUAL": [0, 0, 0],
-            "TARGET": [0, 0, 0]
-        })
+        st.error(f"Could not load Excel from GitHub. Using sample data. Error: {e}")
+        df = pd.DataFrame(
+            {
+                "KPI": ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"],
+                "ACTUAL": [90, 68, 3.5],
+                "TARGET": [95, 70, 2],
+            }
+        )
 
-    # Normalize column names
+    # Normalize columns
     df.columns = df.columns.str.strip().str.upper()
-    # Ensure essential columns exist
     for col in ["KPI", "ACTUAL", "TARGET"]:
         if col not in df.columns:
             df[col] = 0
 
-    # Normalize KPI names
     df["KPI"] = df["KPI"].astype(str).str.upper().str.strip()
     df["ACTUAL"] = pd.to_numeric(df["ACTUAL"], errors="coerce").fillna(0)
     df["TARGET"] = pd.to_numeric(df["TARGET"], errors="coerce").fillna(0)
 
-    # Ensure 3 required KPIs always present
-    expected = ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"]
-    result = []
-    for k in expected:
-        match = df[df["KPI"] == k]
-        if not match.empty:
-            result.append(match.iloc[0])
+    # Ensure all three KPIs exist in the right order
+    wanted = ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"]
+    rows = []
+    for w in wanted:
+        m = df[df["KPI"] == w]
+        if m.empty:
+            rows.append(pd.Series({"KPI": w, "ACTUAL": 0.0, "TARGET": 0.0}))
         else:
-            result.append(pd.Series({"KPI": k, "ACTUAL": 0, "TARGET": 0}))
-    return pd.DataFrame(result)
+            rows.append(m.iloc[0])
+    df2 = pd.DataFrame(rows)
+    return df2
 
-df = load_data()
 
-# -------------------------------
-# PAGE HEADER
-# -------------------------------
-st.markdown("""
-<div style="text-align:center; margin-bottom:25px;">
-  <h1 style="font-size:42px; font-weight:800; margin-bottom:0;">Garment Production Dashboard</h1>
-  <p style="font-size:17px; color:gray;">High-level KPIs and trends for quick status checks (Owner’s View)</p>
+df = load_data_from_github()
+
+# -----------------------------
+# Header
+# -----------------------------
+st.markdown(
+    """
+<div style="text-align:center; margin: 8px 0 24px;">
+  <h1 style="font-size:42px; font-weight:800; margin:0;">Garment Production Dashboard</h1>
+  <p style="font-size:17px; color:gray; margin:6px 0 0;">
+    High-level KPIs and trends for quick status checks (Owner’s View)
+  </p>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
-if st.button("🔄 Refresh Data"):
+if st.button("🔄 Refresh Data", type="secondary"):
     st.cache_data.clear()
     st.rerun()
 
-# -------------------------------
-# GAUGE FUNCTION
-# -------------------------------
-def gauge_chart(value, color, invert=False):
-    if invert:
-        value = 100 - value  # Invert for KPIs where lower is better
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=value,
-        number={'suffix': "%", 'font': {'size': 26, 'color': color}},
-        gauge={
-            'axis': {'range': [0, 100], 'visible': False},
-            'bar': {'color': color, 'thickness': 0.35},
-            'bgcolor': "white",
-            'steps': [{'range': [0, 100], 'color': "#f4f4f4"}],
-        }
-    ))
-    fig.update_layout(height=160, margin=dict(l=0, r=0, t=0, b=0))
-    return fig
 
-# -------------------------------
-# CARD DISPLAY
-# -------------------------------
-cols = st.columns(3)
-bg_colors = ["#FFEAEA", "#FFF6DA", "#FFEAEA"]
-gauge_colors = ["#E63946", "#FFB703", "#E63946"]
+# -----------------------------
+# HTML card renderer
+# -----------------------------
+def kpi_card_html(
+    title: str,
+    actual: float,
+    target: float,
+    bg="#FFEAEA",
+    accent="#E63946",
+    ring_track="#EDEDED",
+) -> str:
+    """
+    Build a self-contained KPI card with a small donut gauge at top-right,
+    big % number, target + variance line, and a button.
+    The donut is SVG so it never escapes the card.
+    """
+    # donut math
+    # small full donut (starts at top)
+    r = 24
+    circumference = 2 * 3.1415926535 * r
+    pct = max(0.0, min(100.0, float(actual)))
+    dash = circumference * (pct / 100.0)
+    gap = circumference - dash
 
-for col, record, bg, g_color in zip(cols, df.to_dict("records"), bg_colors, gauge_colors):
-    kpi = record["KPI"].title()
-    actual = float(record["ACTUAL"])
-    target = float(record["TARGET"])
     variance = actual - target
     variance_txt = f"+{variance:.1f}%" if variance > 0 else f"{variance:.1f}%"
-    variance_color = "green" if variance > 0 else "#E63946"
+    variance_color = "#2E7D32" if variance > 0 else "#E63946"
 
-    invert = True if kpi == "Lost Time" else False  # Invert only Lost Time chart
+    # card HTML/CSS
+    return f"""
+<style>
+.kpi-card {{
+  background:{bg};
+  border-radius:20px;
+  padding:22px;
+  box-shadow:0 2px 8px rgba(0,0,0,.08);
+  height: 360px;
+  display:flex;
+  flex-direction:column;
+}}
+.kpi-top {{
+  display:flex; justify-content:space-between; align-items:flex-start;
+}}
+.kpi-title {{
+  margin:0; font-weight:800; font-size:22px;
+}}
+.g-wrap {{
+  width:72px; height:72px; position:relative;
+}}
+.g-label {{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:700; color:#444;
+}}
+hr.kpi-line {{
+  border:none; height:1px; background:#e1e1e1; margin:8px 0 10px;
+}}
+.kpi-primary {{
+  font-size:46px; font-weight:800; margin:6px 0 2px;
+}}
+.kpi-meta {{
+  display:flex; justify-content:space-between; align-items:center;
+  font-size:16px;
+}}
+.kpi-btn {{
+  background:white;
+  border:2px solid {accent};
+  color:{accent};
+  padding:8px 22px;
+  border-radius:10px;
+  font-weight:700;
+  cursor:pointer;
+}}
+</style>
+
+<div class="kpi-card">
+  <div class="kpi-top">
+    <h4 class="kpi-title">{title}</h4>
+
+    <!-- small donut -->
+    <div class="g-wrap">
+      <svg viewBox="0 0 60 60" width="72" height="72" style="transform:rotate(-90deg)">
+        <circle cx="30" cy="30" r="{r}" fill="none" stroke="{ring_track}" stroke-width="8"/>
+        <circle cx="30" cy="30" r="{r}" fill="none" stroke="{accent}"
+                stroke-width="8" stroke-linecap="round"
+                stroke-dasharray="{dash:.2f} {gap:.2f}" />
+      </svg>
+      <div class="g-label">{actual:.1f}%</div>
+    </div>
+  </div>
+
+  <div style="flex:1;"></div>
+
+  <div>
+    <div class="kpi-primary">{actual:.1f}%</div>
+    <hr class="kpi-line" />
+    <div class="kpi-meta">
+      <div><b>Target:</b> {target:.1f}%</div>
+      <div><b>Variance:</b> <span style="color:{variance_color};">{variance_txt}</span></div>
+    </div>
+    <div style="text-align:center; margin-top:14px;">
+      <button class="kpi-btn">Drill Down</button>
+    </div>
+  </div>
+</div>
+"""
+
+
+# -----------------------------
+# Map KPIs to colors & render
+# -----------------------------
+# desired order
+order = ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"]
+bg_colors  = ["#FFEAEA", "#FFF6DA", "#FFEAEA"]
+accents    = ["#E63946", "#FFB703", "#E63946"]
+
+cols = st.columns(3)
+
+for col, kpi_name, bg, acc in zip(cols, order, bg_colors, accents):
+    row = df[df["KPI"] == kpi_name].iloc[0]
+    actual = float(row["ACTUAL"])
+    target = float(row["TARGET"])
+
+    # nice titles
+    title = kpi_name.title()
 
     with col:
-        # Card structure using Streamlit container to keep layout intact
-        card = st.container()
-        with card:
-            st.markdown(
-                f"""
-                <div style="
-                    background-color:{bg};
-                    padding:25px;
-                    border-radius:20px;
-                    box-shadow:0 2px 6px rgba(0,0,0,0.1);
-                    height:440px;
-                    display:flex;
-                    flex-direction:column;
-                    justify-content:space-between;">
-                    <h4 style="margin:0;font-weight:800;">{kpi}</h4>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            st.plotly_chart(
-                gauge_chart(actual, g_color, invert=invert),
-                use_container_width=True,
-                config={"displayModeBar": False},
-            )
-
-            st.markdown(
-                f"""
-                <div style="text-align:left;">
-                    <h2 style="font-size:44px;font-weight:800;margin:5px 0;">{actual:.1f}%</h2>
-                    <hr style="border:1px solid #ddd;margin:8px 0;"/>
-                    <div style="display:flex;justify-content:space-between;">
-                        <p style="margin:0;font-size:16px;"><b>Target:</b> {target:.1f}%</p>
-                        <p style="margin:0;font-size:16px;"><b>Variance:</b>
-                            <span style="color:{variance_color};">{variance_txt}</span></p>
-                    </div>
-                    <div style="text-align:center;margin-top:15px;">
-                        <button style="
-                            background-color:white;
-                            color:{g_color};
-                            border:2px solid {g_color};
-                            padding:8px 25px;
-                            border-radius:10px;
-                            cursor:pointer;
-                            font-weight:600;
-                            font-size:15px;">
-                            Drill Down
-                        </button>
-                    </div>
-                </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        card = kpi_card_html(title, actual, target, bg=bg, accent=acc)
+        html(card, height=390)  # one self-contained card
