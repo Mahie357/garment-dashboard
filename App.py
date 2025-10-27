@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 # -----------------------------
 st.set_page_config(page_title="Garment Production Dashboard", layout="wide")
 
+# ✅ Replace with your GitHub Excel URL
 GITHUB_EXCEL_URL = "https://github.com/Mahie357/garment-dashboard/raw/refs/heads/main/garment_data.xlsx"
 
 # -----------------------------
@@ -48,10 +49,10 @@ st.markdown(
 # -----------------------------
 if st.button("🔄 Refresh Data"):
     st.cache_data.clear()
-    st.experimental_rerun()
+    st.rerun()
 
 # -----------------------------
-# KPI CARDS FUNCTION
+# KPI GAUGE CREATOR
 # -----------------------------
 def create_gauge_chart(value, color, label):
     fig = go.Figure(go.Indicator(
@@ -76,10 +77,12 @@ def create_gauge_chart(value, color, label):
 # -----------------------------
 col1, col2, col3 = st.columns(3, gap="large")
 
+# Assign colors for KPI cards
 kpi_colors = ["#E63946", "#FFB703", "#E63946"]
 background_colors = ["#FFEAEA", "#FFF6DA", "#FFEAEA"]
 
-for i, (col, row, color, bg) in enumerate(zip([col1, col2, col3], df.itertuples(), kpi_colors, background_colors)):
+# Loop through 3 KPIs
+for col, row, color, bg in zip([col1, col2, col3], df.itertuples(), kpi_colors, background_colors):
     with col:
         kpi = row.KPI.upper()
         actual = float(row.Actual)
@@ -99,22 +102,27 @@ for i, (col, row, color, bg) in enumerate(zip([col1, col2, col3], df.itertuples(
                 display:flex;
                 flex-direction:column;
                 justify-content:space-between;">
+                
+                <!-- TOP SECTION -->
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <h4 style="margin:0; font-weight:800;">{kpi}</h4>
                     <div style="width:120px;">{create_gauge_chart(actual, color, kpi).to_html(include_plotlyjs='cdn', full_html=False)}</div>
                 </div>
 
+                <!-- ACTUAL VALUE -->
                 <div style="text-align:left; margin-top:10px;">
                     <h2 style="font-size:48px; font-weight:800; margin:5px 0;">{actual:.1f}%</h2>
                 </div>
 
                 <hr style="border:1px solid #ddd; margin:8px 0;"/>
 
+                <!-- TARGET & VARIANCE -->
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <p style="margin:0; font-size:16px;"><b>Target:</b> {target:.1f}%</p>
                     <p style="margin:0; font-size:16px;"><b>Variance:</b> <span style="color:{variance_color};">{variance_text}</span></p>
                 </div>
 
+                <!-- DRILL DOWN BUTTON -->
                 <div style="text-align:center; margin-top:15px;">
                     <button style="
                         background-color:white;
