@@ -2,123 +2,119 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-# --- Streamlit Page Setup ---
+# ---------------- Streamlit Page Setup ----------------
 st.set_page_config(page_title="Garment Production Dashboard", layout="wide")
 
-# --- Load Data ---
+# ---------------- Sample Data ----------------
 data = {
-    "KPI": ["Productivity", "Efficiency", "Lost Time"],
-    "Actual": [72, 68, 3.5],
-    "Target": [75, 70, 2]
+    "KPI": ["Productivity", "Efficiency", "Variance From Target"],
+    "Actual": [72, 68, -4],
+    "Target": [75, 70, 0],
 }
 df = pd.DataFrame(data)
 
-# --- Card Theme Colors ---
+# ---------------- Custom Colors ----------------
 card_colors = {
-    "Productivity": "#FFE6E6",
-    "Efficiency": "#FFF7E6",
-    "Lost Time": "#FFE6E6"
+    "Productivity": "#FFECEC",
+    "Efficiency": "#FFF7D6",
+    "Variance From Target": "#FFECEC",
+}
+accent_colors = {
+    "Productivity": "#E63946",
+    "Efficiency": "#FFB703",
+    "Variance From Target": "#E63946",
 }
 
-# --- Page Title ---
+# ---------------- Page Title ----------------
 st.markdown(
-    "<h1 style='text-align:center;'>Garment Production Dashboard</h1>",
-    unsafe_allow_html=True
-)
-st.markdown(
-    "<p style='text-align:center;color:gray;'>High-level KPIs for quick status checks (Owner’s View)</p>",
+    """
+    <h1 style='text-align:center; font-weight:800; color:#1e1e1e;'>Garment Production Dashboard</h1>
+    <p style='text-align:center; color:gray;'>High-level KPIs and trends for quick status checks (Owner’s View)</p>
+    """,
     unsafe_allow_html=True
 )
 
-# --- Create 3 Columns ---
+# ---------------- Layout ----------------
 cols = st.columns(3)
 
-for idx, row in df.iterrows():
+for i, row in df.iterrows():
     kpi = row["KPI"]
     actual = row["Actual"]
     target = row["Target"]
     variance = round(actual - target, 1)
     color = "#00B050" if variance >= 0 else "#E60000"
 
-    # --- Create a Custom Gauge ---
-    fig = go.Figure()
-
-    fig.add_trace(go.Indicator(
+    # ---------------- Gauge ----------------
+    fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=actual,
-        number={
-            'suffix': "%",
-            'font': {'size': 48, 'color': '#333', 'family': "Arial Black"}
-        },
-        title={'text': f"{kpi}", 'font': {'size': 20, 'color': '#444'}},
+        number={'suffix': "%", "font": {"size": 28, "color": "#1E1E1E", "family": "Arial Black"}},
         gauge={
-            'axis': {'range': [0, 100], 'tickfont': {'size': 10}, 'tickcolor': 'gray'},
-            'bar': {'color': '#ff4b4b', 'thickness': 0.25},
-            'bgcolor': "#fefefe",
-            'borderwidth': 1,
-            'bordercolor': "#ddd",
-            'steps': [
-                {'range': [0, target], 'color': '#ffeaea'},
-                {'range': [target, 100], 'color': '#f7f7f7'}
-            ]
+            'axis': {'range': [min(-10, target - 20), 100], 'visible': False},
+            'bar': {'color': accent_colors[kpi], 'thickness': 0.35},
+            'bgcolor': "white",
+            'borderwidth': 0,
+            'steps': [{'range': [0, target], 'color': '#F8F8F8'}]
         },
-        domain={'x': [0, 1], 'y': [0, 1]}
+        domain={'x': [0, 1], 'y': [0, 1]},
     ))
 
-    # --- Format Layout to be Centered & Semi-Circular ---
     fig.update_layout(
-        height=250,
-        margin=dict(l=5, r=5, t=40, b=0),
+        height=160,
+        margin=dict(l=0, r=0, t=10, b=0),
         paper_bgcolor=card_colors[kpi],
     )
 
-    # --- Card Layout ---
-    with cols[idx]:
+    # ---------------- Card ----------------
+    with cols[i]:
         st.markdown(
             f"""
-            <div style='background-color:{card_colors[kpi]};
-                        padding:25px;
-                        border-radius:20px;
-                        box-shadow:0px 4px 15px rgba(0,0,0,0.08);
-                        text-align:center;
-                        margin-bottom:20px;'>
-                <h2 style='margin-bottom:15px; color:#333;'>{kpi}</h2>
+            <div style="
+                background-color:{card_colors[kpi]};
+                border-radius:20px;
+                box-shadow: 0px 4px 10px rgba(0,0,0,0.1);
+                padding:25px 20px;
+                text-align:center;
+                ">
+                <h4 style="color:#1E1E1E; font-size:18px; margin-bottom:5px;">{kpi.upper()}</h4>
+                <h2 style="font-weight:800; font-size:36px; margin-top:0; color:#1E1E1E;">{actual}%</h2>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
         st.markdown(
             f"""
-            <div style='text-align:center; line-height:1.8;'>
-                🎯 <b>Target:</b> {target}%<br>
-                📉 <b>Variance:</b> <span style='color:{color}'>{variance:+.1f}%</span>
+            <div style="text-align:left; padding:0 25px;">
+                <p style="margin:4px 0;">🎯 <b>Target:</b> <span style="float:right;">{target}%</span></p>
+                <p style="margin:4px 0;">📉 <b>Variance:</b> 
+                <span style="float:right; color:{color};">{variance:+.1f}%</span></p>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        # --- Button Style ---
+        # ---------------- Drill Down Button ----------------
         st.markdown(
-            """
-            <style>
-                div[data-testid="stButton"] button {
-                    border-radius: 10px;
-                    border: 1px solid #ff4b4b;
-                    color: #ff4b4b;
-                    background: white;
-                    font-weight: 600;
-                    width: 60%;
-                    margin-top: 15px;
-                }
-                div[data-testid="stButton"] button:hover {
-                    background-color: #ff4b4b;
-                    color: white;
-                }
-            </style>
+            f"""
+            <div style="text-align:center; margin-top:10px;">
+                <button style="
+                    background-color:white;
+                    color:{accent_colors[kpi]};
+                    border:2px solid {accent_colors[kpi]};
+                    border-radius:8px;
+                    padding:6px 25px;
+                    font-weight:600;
+                    cursor:pointer;
+                    transition:0.3s;
+                " 
+                onmouseover="this.style.backgroundColor='{accent_colors[kpi]}'; this.style.color='white';"
+                onmouseout="this.style.backgroundColor='white'; this.style.color='{accent_colors[kpi]}';">
+                Drill Down
+                </button>
+            </div>
             """,
             unsafe_allow_html=True
         )
-        st.button("Drill Down", key=kpi)
