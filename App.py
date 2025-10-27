@@ -1,153 +1,190 @@
 # app.py
 import pandas as pd
 import streamlit as st
-import plotly.graph_objects as go
-import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Garment Production Dashboard", layout="wide")
 
-# ------------------ data load + header normalization ------------------
-def load_data():
+# ---------------------- Data ---------------------- #
+def load_df():
     try:
         df = pd.read_excel("garment_data.xlsx")
     except Exception:
-        # fallback demo data
+        # demo data if file missing or unreadable
         return pd.DataFrame({
             "KPI": ["PRODUCTIVITY", "EFFICIENCY", "VARIANCE FROM TARGET"],
             "ACTUAL": [0.72, 0.68, -0.04],
             "TARGET": [0.75, 0.70, 0.00],
         })
-    # normalize headers
+
+    # Normalize headers (space/case insensitive) and map likely names
     df = df.copy()
     df.columns = [c.strip().upper().replace(" ", "") for c in df.columns]
 
-    # map likely header variants -> canonical
     colmap = {}
     for c in df.columns:
-        u = c
-        if u in ("KPI", "METRIC", "NAME"): colmap[c] = "KPI"
-        elif u in ("ACTUAL", "VALUE", "CURRENT", "RESULT"): colmap[c] = "ACTUAL"
-        elif u in ("TARGET", "GOAL", "PLAN"): colmap[c] = "TARGET"
+        if c in ("KPI","METRIC","NAME"): colmap[c] = "KPI"
+        elif c in ("ACTUAL","VALUE","CURRENT","RESULT"): colmap[c] = "ACTUAL"
+        elif c in ("TARGET","GOAL","PLAN"): colmap[c] = "TARGET"
     df = df.rename(columns=colmap)
 
-    needed = {"KPI", "ACTUAL", "TARGET"}
-    if not needed.issubset(df.columns):
-        st.error(
-            f"Missing required columns. Found: {list(df.columns)}. "
-            "Need columns that map to KPI / ACTUAL / TARGET."
-        )
-        # show sample
+    # Make sure we have the three
+    need = {"KPI","ACTUAL","TARGET"}
+    if not need.issubset(df.columns):
         return pd.DataFrame({
             "KPI": ["PRODUCTIVITY", "EFFICIENCY", "VARIANCE FROM TARGET"],
             "ACTUAL": [0.72, 0.68, -0.04],
             "TARGET": [0.75, 0.70, 0.00],
         })
-    return df
 
-df = load_data()
+    # Normalize to 0–1 (or already fractional)
+    def to_frac(x):
+        if pd.isna(x): return 0.0
+        try: x=float(x)
+        except: return 0.0
+        return x/100 if abs(x)>1 else x
 
-# normalize percentages to 0–1
-def to_pct(x):
-    if pd.isna(x): return 0.0
-    try:
-        x = float(x)
-    except Exception:
-        return 0.0
-    return x/100 if abs(x) > 1 else x
+    df["ACTUAL"] = df["ACTUAL"].apply(to_frac)
+    df["TARGET"] = df["TARGET"].apply(to_frac)
+    df["KPI"] = df["KPI"].astype(str).str.upper().str.strip()
+    df["VARIANCE"] = df["ACTUAL"] - df["TARGET"]
 
-df["ACTUAL"] = df["ACTUAL"].apply(to_pct)
-df["TARGET"] = df["TARGET"].apply(to_pct)
-df["KPI"] = df["KPI"].astype(str).str.upper().str.strip()
-df["VARIANCE"] = df["ACTUAL"] - df["TARGET"]
+    # Build the exact three cards in order (create missing ones with zeros)
+    wanted = ["PRODUCTIVITY", "EFFICIENCY", "VARIANCE FROM TARGET"]
+    out = []
+    for k in wanted:
+        if (df["KPI"] == k).any():
+            out.append(df[df["KPI"] == k].iloc[0])
+        else:
+            out.append(pd.Series({"KPI": k, "ACTUAL": 0.0, "TARGET": 0.0, "VARIANCE": 0.0}))
+    return pd.DataFrame(out)
 
-# keep only the 3 cards, in order (present ones shown)
-order = ["PRODUCTIVITY", "EFFICIENCY", "VARIANCE FROM TARGET"]
-df = pd.concat([df[df["KPI"] == k] for k in order if k in set(df["KPI"])], ignore_index=True)
+df = load_df()
 
-# ------------------ theme ------------------
-card_colors = {"PRODUCTIVITY": "#FFE5E5", "EFFICIENCY": "#FFF1C9", "VARIANCE FROM TARGET": "#FFE5E5"}
-accent_colors = {"PRODUCTIVITY": "#E63946", "EFFICIENCY": "#FFB703", "VARIANCE FROM TARGET": "#E63946"}
+# ---------------------- Styles ---------------------- #
+st.markdown("""
+<style>
+/* header card */
+.header {
+  padding:22px 28px; margin-bottom:18px; background:#fff;
+  border:1px solid #eee; border-radius:14px;
+  box-shadow:0 6px 18px rgba(0,0,0,.06);
+}
+.header h1{ margin:0; font-size:46px; line-height:1.1;}
+.header .sub{ margin-top:6px; color:#666; font-size:18px;}
 
-# ------------------ header ------------------
-st.markdown(
-    """
-    <div style="padding:22px 28px;margin-bottom:18px;background:#fff;border:1px solid #eee;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.06);">
-      <h1 style="margin:0;font-size:46px;line-height:1.1;">Garment Production Dashboard</h1>
-      <div style="margin-top:6px;color:#666;font-size:18px;">High-level KPIs and trends for quick status checks (Owner's View).</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+/* three cards container */
+.kpi-row{
+  display:flex; gap:22px; width:100%;
+}
+.kpi-card{
+  position:relative; flex:1 1 0;
+  height:320px; padding:18px; border:1px solid #eee; border-radius:18px;
+  box-shadow:0 8px 20px rgba(0,0,0,.06);
+  display:flex; flex-direction:column; justify-content:space-between;
+}
 
-cols = st.columns(3, gap="large")
+/* top row inside card */
+.kpi-top{
+  position:relative; height:110px;
+}
+.kpi-title{
+  font-weight:800; letter-spacing:.6px; color:#333; margin-bottom:8px;
+}
+.kpi-value{
+  font-size:44px; font-weight:800; line-height:1; color:#1a1a1a;
+}
 
-# ------------------ cards ------------------
-for i, row in df.iterrows():
-    kpi = row["KPI"]
-    actual = float(row["ACTUAL"])
-    target = float(row["TARGET"])
-    variance = actual - target
+/* donut ring (conic-gradient) */
+.ring{
+  position:absolute; top:6px; right:6px;
+  width:86px; height:86px; border-radius:50%;
+  background:
+    conic-gradient(var(--ring-color) calc(var(--p)*1%), #ececec 0);
+}
+.ring::after{
+  content: attr(data-label);
+  position:absolute; inset:16px; display:flex; align-items:center; justify-content:center;
+  background:#fff; border-radius:50%; font:700 16px/1.1 ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;
+  color:#333; border:2px solid #fff;
+}
 
-    donut_val = abs(actual * 100) if kpi != "VARIANCE FROM TARGET" else abs(variance * 100)
-    ring = accent_colors.get(kpi, "#E63946")
-    bg = "#f1f1f1"
+/* divider */
+.divider{ height:1px; background:#eadede; margin:2px 0 8px 0;}
 
-    # donut
-    fig = go.Figure()
-    fig.add_trace(go.Pie(
-        values=[donut_val, max(0, 100 - donut_val)],
-        hole=.78, sort=False, direction="clockwise",
-        marker=dict(colors=[ring, bg], line=dict(color="#fff", width=2)),
-        textinfo="none", hoverinfo="skip", showlegend=False
-    ))
-    fig.update_layout(
-        margin=dict(l=0,r=0,t=0,b=0), width=112, height=112,
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    )
-    donut_html = fig.to_html(include_plotlyjs="cdn", full_html=False)
+/* target/variance row */
+.kpi-meta{
+  display:flex; justify-content:space-between; align-items:center;
+  font-size:16px;
+}
+.kpi-meta span.label{ opacity:.7; }
 
-    # text
-    big_txt = f'{actual*100:.0f}%' if kpi != "VARIANCE FROM TARGET" else f'{variance*100:+.0f}%'
-    tgt_txt = f'{target*100:.0f}%'
-    var_txt = f'{variance*100:+.1f}%'
+/* button row */
+.kpi-btn{
+  display:flex; justify-content:flex-start;
+}
+.kpi-btn button{
+  padding:10px 22px; border-radius:12px; background:#fff; font-weight:700;
+  cursor:pointer; border:2px solid var(--btn-color); color:#222;
+}
+
+/* backgrounds per card */
+.bg-pink{ background:#FFE5E5; }
+.bg-yellow{ background:#FFF1C9; }
+.bg-pink2{ background:#FFE5E5; }
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------------- Header ---------------------- #
+st.markdown("""
+<div class="header">
+  <h1>Garment Production Dashboard</h1>
+  <div class="sub">High-level KPIs and trends for quick status checks (Owner's View).</div>
+</div>
+""", unsafe_allow_html=True)
+
+# ---------------------- Render Cards ---------------------- #
+# fixed order and colors
+order = [
+    ("PRODUCTIVITY",  "bg-pink",   "#E63946"),
+    ("EFFICIENCY",    "bg-yellow", "#FFB703"),
+    ("VARIANCE FROM TARGET","bg-pink2","#E63946")
+]
+
+# Build HTML for the row
+parts = ['<div class="kpi-row">']
+for kpi_name, bg_cls, accent in order:
+    r = df[df["KPI"] == kpi_name].iloc[0]
+    actual = float(r["ACTUAL"])
+    target = float(r["TARGET"])
+    variance = float(r["VARIANCE"])
+
+    # main number in big font (value vs variance card)
+    big_txt = f'{actual*100:.0f}%' if kpi_name != "VARIANCE FROM TARGET" else f'{variance*100:+.0f}%'
+    donut_pct = abs(actual*100) if kpi_name != "VARIANCE FROM TARGET" else abs(variance*100)
+    donut_label = f'{actual*100:.0f}%' if kpi_name != "VARIANCE FROM TARGET" else f'{variance*100:+.0f}%'
+
     var_color = "#E63946" if variance < 0 else ("#2a9d8f" if variance > 0 else "#444")
+    target_txt = f"{target*100:.0f}%"
+    variance_txt = f"{variance*100:+.1f}%"
 
-    card_bg = card_colors.get(kpi, "#FFEDEA")
-    btn_border = ring
-    title = kpi
-
-    card_html = f"""
-    <div style="
-      position:relative;background:{card_bg};border:1px solid #eee;border-radius:18px;
-      padding:18px 18px 16px 18px;height:320px;box-shadow:0 8px 20px rgba(0,0,0,.06);
-      display:grid;grid-template-rows:106px 1px 112px;row-gap:8px;">
-      
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div style="font-weight:700;letter-spacing:.6px;color:#333;">{title}</div>
-        <div style="transform:translateY(-6px);">{donut_html}</div>
-      </div>
-
-      <div style="height:1px;background:#eadede;"></div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;column-gap:16px;align-items:center;">
-        <div>
-          <div style="font-size: clamp(30px,3.6vw,46px); font-weight:800; line-height:1; color:#1a1a1a; margin-bottom:12px;">
-            {big_txt}
-          </div>
-          <div style="display:flex; gap:18px; font-size:16px;">
-            <div><span style="opacity:.7;">Target:</span> <b>{tgt_txt}</b></div>
-            <div><span style="opacity:.7;">Variance:</span> <b style="color:{var_color};">{var_txt}</b></div>
-          </div>
+    parts.append(f"""
+      <div class="kpi-card {bg_cls}" style="--btn-color:{accent};">
+        <div class="kpi-top">
+          <div class="kpi-title">{kpi_name}</div>
+          <div class="kpi-value">{big_txt}</div>
+          <div class="ring" style="--ring-color:{accent}; --p:{max(0,min(100,donut_pct))};" data-label="{donut_label}"></div>
         </div>
-        <div style="display:flex;justify-content:flex-end;align-items:end;">
-          <button style="
-            padding:10px 22px;border-radius:12px;border:2px solid {btn_border};
-            background:#fff;color:#222;font-weight:700;cursor:pointer;">
-            Drill Down
-          </button>
+
+        <div class="divider"></div>
+
+        <div class="kpi-meta">
+          <div><span class="label">Target:</span> <b>{target_txt}</b></div>
+          <div><span class="label">Variance:</span> <b style="color:{var_color};">{variance_txt}</b></div>
         </div>
+
+        <div class="kpi-btn"><button>Drill Down</button></div>
       </div>
-    </div>
-    """
-    with cols[i]:
-        components.html(card_html, height=340, scrolling=False)
+    """)
+
+parts.append('</div>')
+st.markdown("\n".join(parts), unsafe_allow_html=True)
