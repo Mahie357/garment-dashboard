@@ -158,7 +158,7 @@ CSS = """
   background:var(--card-bg);
   border-radius:var(--radius);
   box-shadow:var(--shadow);
-  padding:22px 22px 28px;
+  padding:18px 22px 28px;
   min-height:270px;
   display:flex;
   flex-direction:column;
@@ -166,9 +166,9 @@ CSS = """
 }
 .kpi-top{
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   justify-content:space-between;
-  margin-bottom:10px;
+  margin-top:-6px;
 }
 .kpi-title{
   font-family:var(--font);
@@ -177,11 +177,12 @@ CSS = """
   font-weight:700;
   color:#3A3A3A;
   text-transform:uppercase;
+  margin-top:-6px;
 }
 .kpi-ring-wrap{
   width:120px;
   height:120px;
-  margin-top:-10px;
+  margin-top:-8px;
 }
 .kpi-value{
   font-family:var(--font);
@@ -189,7 +190,7 @@ CSS = """
   font-weight:800;
   color:#121212;
   line-height:1;
-  margin-top:-15px;
+  margin-top:-22px; /* moved up */
   text-align:left;
 }
 .kpi-divider{
@@ -236,14 +237,14 @@ CSS = """
   background:#fff;
   border-radius:20px;
   box-shadow:var(--shadow);
-  padding:26px 28px;
-  margin-bottom:22px;
+  padding:20px 28px;
+  margin-bottom:18px;
 }
 .h-title{
   font-family:var(--font);
   font-size:46px;
   font-weight:800;
-  margin:0 0 10px;
+  margin:0 0 6px;
   color:#101828;
 }
 .h-sub{
