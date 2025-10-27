@@ -45,31 +45,27 @@ for i, row in df.iterrows():
     accent = accent_colors[kpi]
     color = "#00B050" if variance >= 0 else "#E60000"
 
-    # --------- SMALL CLEAN GAUGE ---------
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
+    # -------- SMALL TOP-RIGHT GAUGE --------
+    gauge = go.Figure(go.Indicator(
+        mode="gauge",
         value=actual,
-        number={
-            "suffix": "%",
-            "font": {"size": 36, "color": "#1E1E1E", "family": "Arial Black"}
-        },
         gauge={
-            "axis": {"range": [min(0, target - 10), 100], "visible": False},
-            "bar": {"color": accent, "thickness": 0.35},
+            "axis": {"range": [0, 100], "visible": False},
+            "bar": {"color": accent, "thickness": 0.2},
             "bgcolor": "#f5f5f5",
             "borderwidth": 0,
             "steps": [{"range": [0, target], "color": "#f2f2f2"}],
         },
         domain={'x': [0, 1], 'y': [0, 1]}
     ))
-
-    fig.update_layout(
-        height=180,
-        margin=dict(l=0, r=0, t=20, b=0),
-        paper_bgcolor=card_colors[kpi]
+    gauge.update_layout(
+        width=100,
+        height=100,
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor=card_colors[kpi],
     )
 
-    # --------- CARD LAYOUT ---------
+    # ---------------- CARD ----------------
     with cols[i]:
         st.markdown(
             f"""
@@ -77,35 +73,57 @@ for i, row in df.iterrows():
                 background-color:{card_colors[kpi]};
                 border-radius:20px;
                 box-shadow:0px 4px 10px rgba(0,0,0,0.1);
-                padding:25px 20px 15px 20px;
+                padding:20px;
+                position:relative;
+                height:290px;
                 text-align:center;
-                ">
-                <h4 style="color:#1E1E1E; font-size:16px; margin-bottom:10px; text-transform:uppercase;">
-                    {kpi}
-                </h4>
+            ">
+                <!-- KPI Title -->
+                <div style="text-align:left;">
+                    <h4 style="color:#1E1E1E; font-size:16px; margin:0; text-transform:uppercase;">
+                        {kpi}
+                    </h4>
+                </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # Place gauge top-right (smaller)
+        gauge_html = gauge.to_html(include_plotlyjs="cdn", full_html=False)
+        st.markdown(
+            f"""
+            <div style="position:absolute; top:15px; right:15px; width:85px;">
+                {gauge_html}
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        # Gauge chart centered
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-        # Target and variance neatly inside same card
+        # Main KPI number
         st.markdown(
             f"""
-            <div style="text-align:center; line-height:1.8; font-size:15px;">
-                🎯 <b>Target:</b> {target}%<br>
-                📉 <b>Variance:</b> <span style="color:{color};">{variance:+.1f}%</span>
+            <div style="margin-top:60px;">
+                <h2 style="font-weight:800; font-size:40px; margin:0; color:#1E1E1E;">{actual}%</h2>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        # --------- BUTTON ---------
+        # Target and variance side by side
         st.markdown(
             f"""
-            <div style="text-align:center; margin-top:10px;">
+            <div style="display:flex; justify-content:space-around; margin-top:15px;">
+                <p style="margin:0; font-size:15px;">🎯 <b>Target:</b> {target}%</p>
+                <p style="margin:0; font-size:15px;">📉 <b>Variance:</b> <span style="color:{color};">{variance:+.1f}%</span></p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # Drill Down button
+        st.markdown(
+            f"""
+            <div style="text-align:center; margin-top:25px;">
                 <button style="
                     background-color:white;
                     color:{accent};
@@ -120,6 +138,7 @@ for i, row in df.iterrows():
                 onmouseout="this.style.backgroundColor='white'; this.style.color='{accent}';">
                 Drill Down
                 </button>
+            </div>
             </div>
             """,
             unsafe_allow_html=True
