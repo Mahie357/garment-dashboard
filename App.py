@@ -52,10 +52,10 @@ for i, row in df.iterrows():
         marker_colors=[accent, "#EAEAEA"],
         textinfo='none'
     ))
-    fig.add_annotation(text=f"{actual}%", showarrow=False, font=dict(size=16, color="black"))
+    fig.add_annotation(text=f"{actual}%", showarrow=False, font=dict(size=14, color="black"))
     fig.update_layout(
         margin=dict(l=0, r=0, t=0, b=0),
-        width=80, height=80,
+        width=70, height=70,
         showlegend=False,
         paper_bgcolor=bg
     )
@@ -66,39 +66,40 @@ for i, row in df.iterrows():
     <div style="
         background-color:{bg};
         border-radius:16px;
-        padding:20px;
-        height:330px;
+        padding:18px 20px;
+        height:300px;
         width:100%;
         box-shadow:0 6px 10px rgba(0,0,0,0.08);
         display:flex;
         flex-direction:column;
         justify-content:space-between;
+        overflow:hidden;
     ">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; height:70px;">
             <div style="text-align:left;">
-                <h4 style="margin:0; font-size:14px; font-weight:700; color:#444;">{kpi.upper()}</h4>
-                <h2 style="margin:8px 0 0 0; font-size:42px; font-weight:800; color:#222;">{actual}%</h2>
+                <h4 style="margin:0; font-size:13px; font-weight:700; color:#444;">{kpi.upper()}</h4>
+                <h2 style="margin:6px 0 0 0; font-size:38px; font-weight:800; color:#222;">{actual}%</h2>
             </div>
-            <div style="margin-top:5px; width:85px;">{chart_html}</div>
+            <div style="margin-top:2px; width:70px;">{chart_html}</div>
         </div>
 
-        <hr style="border:none; border-top:1px solid #ddd; margin:10px 0 15px 0;">
+        <hr style="border:none; border-top:1px solid #ddd; margin:8px 0 12px 0;">
 
-        <div style="display:flex; justify-content:space-between; align-items:center; font-size:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:15px; margin-bottom:8px;">
             <p style="margin:0;"><b>Target:</b> {target}%</p>
             <p style="margin:0;"><b>Variance:</b> 
             <span style="color:{variance_color};">{variance:+.1f}%</span></p>
         </div>
 
-        <div style="text-align:center; margin-top:18px;">
+        <div style="text-align:center;">
             <button style="
                 border:2px solid {accent};
                 background-color:transparent;
                 color:{accent};
                 border-radius:8px;
-                padding:6px 25px;
+                padding:5px 20px;
                 font-weight:600;
-                font-size:15px;
+                font-size:14px;
                 cursor:pointer;
                 transition:0.3s;
             " 
@@ -111,4 +112,4 @@ for i, row in df.iterrows():
     """
 
     with cols[i]:
-        components.html(card_html, height=340, scrolling=False)
+        components.html(card_html, height=320, scrolling=False)
