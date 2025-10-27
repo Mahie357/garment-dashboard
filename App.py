@@ -1,5 +1,4 @@
 # app.py
-import math
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
@@ -7,43 +6,69 @@ import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Garment Production Dashboard", layout="wide")
 
-# -------- Data --------
-# Expect columns: KPI, Actual, Target  (Actual/Target as % or decimals)
-try:
-    df = pd.read_excel("garment_data.xlsx")
-except Exception:
-    df = pd.DataFrame({
-        "KPI": ["PRODUCTIVITY", "EFFICIENCY", "VARIANCE FROM TARGET"],
-        "Actual": [0.72, 0.68, -0.04],     # fallback demo
-        "Target": [0.75, 0.70, 0.00],
-    })
+# ------------------ data load + header normalization ------------------
+def load_data():
+    try:
+        df = pd.read_excel("garment_data.xlsx")
+    except Exception:
+        # fallback demo data
+        return pd.DataFrame({
+            "KPI": ["PRODUCTIVITY", "EFFICIENCY", "VARIANCE FROM TARGET"],
+            "ACTUAL": [0.72, 0.68, -0.04],
+            "TARGET": [0.75, 0.70, 0.00],
+        })
+    # normalize headers
+    df = df.copy()
+    df.columns = [c.strip().upper().replace(" ", "") for c in df.columns]
 
-# normalize to percentages (0–1)
+    # map likely header variants -> canonical
+    colmap = {}
+    for c in df.columns:
+        u = c
+        if u in ("KPI", "METRIC", "NAME"): colmap[c] = "KPI"
+        elif u in ("ACTUAL", "VALUE", "CURRENT", "RESULT"): colmap[c] = "ACTUAL"
+        elif u in ("TARGET", "GOAL", "PLAN"): colmap[c] = "TARGET"
+    df = df.rename(columns=colmap)
+
+    needed = {"KPI", "ACTUAL", "TARGET"}
+    if not needed.issubset(df.columns):
+        st.error(
+            f"Missing required columns. Found: {list(df.columns)}. "
+            "Need columns that map to KPI / ACTUAL / TARGET."
+        )
+        # show sample
+        return pd.DataFrame({
+            "KPI": ["PRODUCTIVITY", "EFFICIENCY", "VARIANCE FROM TARGET"],
+            "ACTUAL": [0.72, 0.68, -0.04],
+            "TARGET": [0.75, 0.70, 0.00],
+        })
+    return df
+
+df = load_data()
+
+# normalize percentages to 0–1
 def to_pct(x):
     if pd.isna(x): return 0.0
+    try:
+        x = float(x)
+    except Exception:
+        return 0.0
     return x/100 if abs(x) > 1 else x
 
-df["Actual"] = df["Actual"].apply(to_pct)
-df["Target"] = df["Target"].apply(to_pct)
-df["Variance"] = (df["Actual"] - df["Target"])
+df["ACTUAL"] = df["ACTUAL"].apply(to_pct)
+df["TARGET"] = df["TARGET"].apply(to_pct)
+df["KPI"] = df["KPI"].astype(str).str.upper().str.strip()
+df["VARIANCE"] = df["ACTUAL"] - df["TARGET"]
 
-# keep only the 3 cards in the order
+# keep only the 3 cards, in order (present ones shown)
 order = ["PRODUCTIVITY", "EFFICIENCY", "VARIANCE FROM TARGET"]
-df = pd.concat([df[df["KPI"].str.upper()==k] for k in order]).reset_index(drop=True)
+df = pd.concat([df[df["KPI"] == k] for k in order if k in set(df["KPI"])], ignore_index=True)
 
-# -------- Theme bits --------
-card_colors = {
-    "PRODUCTIVITY": "#FFE5E5",
-    "EFFICIENCY": "#FFF1C9",
-    "VARIANCE FROM TARGET": "#FFE5E5",
-}
-accent_colors = {
-    "PRODUCTIVITY": "#E63946",
-    "EFFICIENCY": "#FFB703",
-    "VARIANCE FROM TARGET": "#E63946",
-}
+# ------------------ theme ------------------
+card_colors = {"PRODUCTIVITY": "#FFE5E5", "EFFICIENCY": "#FFF1C9", "VARIANCE FROM TARGET": "#FFE5E5"}
+accent_colors = {"PRODUCTIVITY": "#E63946", "EFFICIENCY": "#FFB703", "VARIANCE FROM TARGET": "#E63946"}
 
-# -------- Header --------
+# ------------------ header ------------------
 st.markdown(
     """
     <div style="padding:22px 28px;margin-bottom:18px;background:#fff;border:1px solid #eee;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.06);">
@@ -56,20 +81,18 @@ st.markdown(
 
 cols = st.columns(3, gap="large")
 
-# -------- Card builder --------
+# ------------------ cards ------------------
 for i, row in df.iterrows():
-    kpi = str(row["KPI"]).upper()
-    actual = float(row["Actual"])
-    target = float(row["Target"])
+    kpi = row["KPI"]
+    actual = float(row["ACTUAL"])
+    target = float(row["TARGET"])
     variance = actual - target
 
-    # circle progress (donut) — 72% -> 72, -4% -> 4 (positive arc), label shows signed text
-    donut_val = abs(actual*100)
-    donut_label = f'{actual*100:.0f}%' if kpi != "VARIANCE FROM TARGET" else f'{variance*100:.0f}%'
-
-    # donut figure
-    bg = "#f1f1f1"
+    donut_val = abs(actual * 100) if kpi != "VARIANCE FROM TARGET" else abs(variance * 100)
     ring = accent_colors.get(kpi, "#E63946")
+    bg = "#f1f1f1"
+
+    # donut
     fig = go.Figure()
     fig.add_trace(go.Pie(
         values=[donut_val, max(0, 100 - donut_val)],
@@ -81,16 +104,14 @@ for i, row in df.iterrows():
         margin=dict(l=0,r=0,t=0,b=0), width=112, height=112,
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     )
-
     donut_html = fig.to_html(include_plotlyjs="cdn", full_html=False)
 
-    # numbers
+    # text
     big_txt = f'{actual*100:.0f}%' if kpi != "VARIANCE FROM TARGET" else f'{variance*100:+.0f}%'
     tgt_txt = f'{target*100:.0f}%'
     var_txt = f'{variance*100:+.1f}%'
     var_color = "#E63946" if variance < 0 else ("#2a9d8f" if variance > 0 else "#444")
 
-    # card HTML
     card_bg = card_colors.get(kpi, "#FFEDEA")
     btn_border = ring
     title = kpi
@@ -128,6 +149,5 @@ for i, row in df.iterrows():
       </div>
     </div>
     """
-
     with cols[i]:
         components.html(card_html, height=340, scrolling=False)
