@@ -261,12 +261,36 @@ CSS = """
 }
 </style>
 """
-
 # ---------- HEADER ----------
 st.markdown("""
-<div class="block">
-  <div class="h-title">Garment Production Dashboard</div>
-  <p class="h-sub">High-level KPIs and trends for quick status checks (Owner’s View).</p>
+<style>
+.header-container {
+    background: linear-gradient(90deg, #8B7355 0%, #9B8265 100%); /* Elegant coffee-gold gradient */
+    color: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+    padding: 22px 40px;
+    margin-bottom: 24px;
+}
+.header-title {
+    font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    font-size: 38px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    margin: 0;
+}
+.header-sub {
+    font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    font-size: 18px;
+    font-weight: 400;
+    opacity: 0.9;
+    margin-top: 4px;
+}
+</style>
+
+<div class="header-container">
+    <div class="header-title">Garment Production Dashboard</div>
+    <div class="header-sub">High-level KPIs and trends for quick status checks (Owner’s View)</div>
 </div>
 """, unsafe_allow_html=True)
 
