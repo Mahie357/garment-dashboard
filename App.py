@@ -113,9 +113,9 @@ def show_dashboard():
     }
     .kpi-btn {
         text-align: center;
-        margin-top: 14px;
+        margin-top: 12px;
     }
-    .kpi-btn button {
+    .drill-btn {
         background: #fff;
         border: 2px solid var(--btn-color);
         color: var(--btn-color);
@@ -126,7 +126,7 @@ def show_dashboard():
         cursor: pointer;
         transition: 0.2s ease;
     }
-    .kpi-btn button:hover {
+    .drill-btn:hover {
         background: var(--btn-color);
         color: white;
     }
@@ -151,8 +151,16 @@ def show_dashboard():
     with col3:
         card("LOST TIME", 10, 5, +5, pink_bg, red_ring, "LostTime", invert_bad=True)
 
+# ---------- CARD FUNCTION (FIXED BUTTON POSITION) ----------
 def card(title, value, target, variance, bg, ring, key, invert_bad=False):
     var_color = "#D92D20" if (variance > 0 and invert_bad) or (variance < 0 and not invert_bad) else "#05603A"
+
+    button_html = f"""
+    <form action="" method="get">
+        <button name="clicked" value="{key}" class="drill-btn">Drill Down</button>
+    </form>
+    """
+
     st.markdown(f"""
     <div class="kpi-card" style="--card-bg:{bg}; --btn-color:{ring};">
       <div class="kpi-top">
@@ -164,10 +172,14 @@ def card(title, value, target, variance, bg, ring, key, invert_bad=False):
         <div><b>Target:</b> {target:.0f}%</div>
         <div><b>Variance:</b> <span style="color:{var_color};">{variance:+.1f}%</span></div>
       </div>
+      <div class="kpi-btn">{button_html}</div>
     </div>
     """, unsafe_allow_html=True)
-    if st.button("Drill Down", key=key):
+
+    # Detect which "Drill Down" was clicked
+    if "clicked" in st.query_params and st.query_params["clicked"] == key:
         st.session_state["view"] = key
+        st.experimental_rerun()
 
 # ---------- DETAIL PAGES ----------
 def show_detail_page(title, key):
@@ -189,15 +201,6 @@ def show_detail_page(title, key):
     .detail-sub {{
         color: #475467;
         font-size: 17px;
-    }}
-    .back-btn {{
-        display:inline-block;
-        background:none;
-        border:none;
-        color:#475467;
-        font-size:16px;
-        cursor:pointer;
-        margin-bottom:6px;
     }}
     </style>
     """, unsafe_allow_html=True)
