@@ -1,196 +1,236 @@
-# Garment Production Dashboard - Final Stable Excel Linked Version
-
-import streamlit as st
-import pandas as pd
 import math
+import pandas as pd
+import streamlit as st
+from streamlit.components.v1 import html as st_html
 
 st.set_page_config(page_title="Garment Production Dashboard", layout="wide")
 
-# ---------------------- Data Loader ----------------------
-@st.cache_data
-def load_excel_data():
+# ---------- DATA LOADING ----------
+def read_excel_data(path="garment_data.xlsx"):
     try:
-        df = pd.read_excel("garment_data.xlsx")
-        df.columns = df.columns.str.strip().str.lower()
-        df.rename(columns={
-            "kpi": "KPI",
-            "value": "Value",
-            "target": "Target",
-            "variance": "Variance"
-        }, inplace=True)
-        df["KPI"] = df["KPI"].astype(str).str.strip().str.upper().str.replace(".", "", regex=False)
+        df = pd.read_excel(path)
+        if df.empty:
+            raise ValueError
         return df
-    except Exception as e:
-        st.error(f"⚠️ Could not read garment_data.xlsx: {e}")
+    except Exception:
+        st.warning("Using demo data (garment_data.xlsx not found or unreadable).")
         return pd.DataFrame({
             "KPI": ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"],
-            "Value": [80, 65, 10],
-            "Target": [100, 70, 5],
-            "Variance": [-20, -5, +5],
+            "value": [80, 65, 10],
+            "target": [100, 70, 5],
+            "variance": [-20, -5, +5],
         })
 
-# helper - safe KPI lookup
-def get_val(df, name, col):
-    subset = df[df["KPI"].str.contains(name.replace(".", "").upper(), na=False)]
-    if not subset.empty:
-        try:
-            return float(subset.iloc[0][col])
-        except:
-            return 0.0
-    return 0.0
+D = read_excel_data()
 
-# ---------------------- Donut ----------------------
-def donut_chart(value, ring_color, track_color="#EFEFEF", size=120, stroke=12):
-    radius = (size - stroke) / 2
-    circumference = 2 * math.pi * radius
-    progress = circumference * (value / 100)
+# ---------- BASIC HELPERS ----------
+def clamp_pct(p):
+    try:
+        return max(0.0, min(100.0, float(p)))
+    except:
+        return 0.0
+
+def donut_svg(value_pct, ring_color, track="#EFEFEF", size=120, stroke=12):
+    pct = clamp_pct(abs(value_pct))
+    cx = cy = size // 2
+    r = (size - stroke) // 2
+    full = 2 * math.pi * r
+    gap = 0.03 * full
+    value_len = (pct / 100.0) * (full - gap)
+
+    label = f"{value_pct:.0f}%"
     return f"""
     <svg width="{size}" height="{size}" viewBox="0 0 {size} {size}">
-      <circle cx="{size/2}" cy="{size/2}" r="{radius}"
-              stroke="{track_color}" stroke-width="{stroke}" fill="none"/>
-      <circle cx="{size/2}" cy="{size/2}" r="{radius}"
-              stroke="{ring_color}" stroke-width="{stroke}" fill="none"
-              stroke-dasharray="{progress} {circumference}"
-              stroke-linecap="round"
-              transform="rotate(-90 {size/2} {size/2})"/>
+      <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{track}" stroke-width="{stroke}"
+              stroke-dasharray="{full-gap} {gap}" transform="rotate(-90 {cx} {cy})"/>
+      <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{ring_color}" stroke-width="{stroke}"
+              stroke-dasharray="{value_len} {full}" transform="rotate(-90 {cx} {cy})"/>
       <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
-            font-size="18" font-weight="700" fill="#333">{value:.0f}%</text>
+            font-family="Inter" font-size="22" font-weight="700" fill="#2F2F2F">{label}</text>
     </svg>
     """
 
-# ---------------------- CSS ----------------------
-st.markdown("""
-<style>
-body {font-family: 'Inter', sans-serif;}
-.header-container {
-  background-color: #8b7355;
-  border-radius: 18px;
-  padding: 25px 40px;
-  margin-bottom: 25px;
-  color: white;
-  box-shadow: 0px 6px 16px rgba(0,0,0,0.2);
-}
-.header-title {font-size: 36px; font-weight: 800; margin-bottom: 6px;}
-.header-sub {font-size: 18px; opacity: 0.9;}
-
-.kpi-grid {display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px;}
-.kpi-card {
-  border-radius: 18px;
-  padding: 22px;
-  background: var(--card-color);
-  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-.kpi-title {font-weight: 700; margin-bottom: 8px;}
-.kpi-value {font-size: 52px; font-weight: 800; margin-top: -10px;}
-.kpi-meta {display: flex; justify-content: space-between; margin-top: 10px; font-size: 15px;}
-div.stButton > button {
-  font-weight: 700 !important;
-  border-radius: 8px !important;
-  border: 2px solid var(--accent) !important;
-  background: white !important;
-  color: var(--accent) !important;
-  padding: 6px 20px !important;
-}
-div.stButton > button:hover {
-  background: var(--accent) !important;
-  color: white !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ---------------------- Header ----------------------
-def render_header():
+# ---------- MAIN DASHBOARD ----------
+def show_dashboard():
     st.markdown("""
+    <style>
+    .header-container {
+        background: linear-gradient(90deg, #8B7355 0%, #9B8265 100%);
+        color: white;
+        border-radius: 16px;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+        padding: 22px 40px;
+        margin-bottom: 24px;
+    }
+    .header-title {
+        font-size: 38px; font-weight: 800; margin: 0;
+    }
+    .header-sub {
+        font-size: 18px; opacity: 0.9; margin-top: 4px;
+    }
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 28px;
+    }
+    .kpi-card {
+        background: var(--card-bg);
+        border-radius: 16px;
+        box-shadow: 0 8px 18px rgba(0,0,0,0.05);
+        padding: 24px 24px 30px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+    .kpi-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+    }
+    .kpi-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #3A3A3A;
+        text-transform: uppercase;
+        margin-top: -8px;
+    }
+    .kpi-ring-wrap {
+        width: 120px;
+        height: 120px;
+        margin-top: 8px;
+    }
+    .kpi-value {
+        font-size: 58px;
+        font-weight: 800;
+        color: #121212;
+        margin-top: -20px;
+    }
+    .kpi-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 16px;
+        margin-top: 8px;
+    }
+    .kpi-btn {
+        text-align: center;
+        margin-top: 14px;
+    }
+    .kpi-btn button {
+        background: #fff;
+        border: 2px solid var(--btn-color);
+        color: var(--btn-color);
+        font-weight: 700;
+        font-size: 16px;
+        padding: 10px 28px;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: 0.2s ease;
+    }
+    .kpi-btn button:hover {
+        background: var(--btn-color);
+        color: white;
+    }
+    </style>
     <div class="header-container">
         <div class="header-title">Garment Production Dashboard</div>
         <div class="header-sub">High-level KPIs and trends for quick status checks (Owner’s View)</div>
     </div>
     """, unsafe_allow_html=True)
 
-# ---------------------- KPI Card ----------------------
-def kpi_card(title, value, target, variance, bg_color, ring_color, accent_color, route):
+    pink_bg = "#FDECEC"
+    red_ring = "#E63946"
+    amber_bg = "#FFF2CC"
+    amber_ring = "#F4A300"
+
+    col1, col2, col3 = st.columns(3, gap="large")
+
+    with col1:
+        card("PLAN VS ACTUAL", 80, 100, -20, pink_bg, red_ring, "PlanVsActual")
+    with col2:
+        card("EFFICIENCY", 65, 70, -5, amber_bg, amber_ring, "Efficiency")
+    with col3:
+        card("LOST TIME", 10, 5, +5, pink_bg, red_ring, "LostTime", invert_bad=True)
+
+def card(title, value, target, variance, bg, ring, key, invert_bad=False):
+    var_color = "#D92D20" if (variance > 0 and invert_bad) or (variance < 0 and not invert_bad) else "#05603A"
     st.markdown(f"""
-    <div class="kpi-card" style="--card-color:{bg_color}; --accent:{accent_color}">
+    <div class="kpi-card" style="--card-bg:{bg}; --btn-color:{ring};">
+      <div class="kpi-top">
         <div class="kpi-title">{title}</div>
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div class="kpi-value">{value:.0f}%</div>
-            <div>{donut_chart(value, ring_color)}</div>
-        </div>
-        <div class="kpi-meta">
-            <div><b>Target:</b> {target:.0f}%</div>
-            <div><b>Variance:</b> {variance:+.1f}%</div>
-        </div>
+        <div class="kpi-ring-wrap">{donut_svg(value, ring)}</div>
+      </div>
+      <div class="kpi-value">{value:.0f}%</div>
+      <div class="kpi-meta">
+        <div><b>Target:</b> {target:.0f}%</div>
+        <div><b>Variance:</b> <span style="color:{var_color};">{variance:+.1f}%</span></div>
+      </div>
     </div>
     """, unsafe_allow_html=True)
-    if st.button("Drill Down", key=f"btn_{route}"):
-        st.session_state.page = route
+    if st.button("Drill Down", key=key):
+        st.session_state["view"] = key
 
-# ---------------------- Dashboard ----------------------
-def show_dashboard():
-    df = load_excel_data()
-    render_header()
+# ---------- DETAIL PAGES ----------
+def show_detail_page(title, key):
+    st.markdown(f"""
+    <style>
+    .detail-header {{
+        background: #F9FAFB;
+        border-radius: 14px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+        padding: 22px 30px;
+        margin-bottom: 20px;
+    }}
+    .detail-header h2 {{
+        margin: 0;
+        font-size: 32px;
+        font-weight: 800;
+        color: #101828;
+    }}
+    .detail-sub {{
+        color: #475467;
+        font-size: 17px;
+    }}
+    .back-btn {{
+        display:inline-block;
+        background:none;
+        border:none;
+        color:#475467;
+        font-size:16px;
+        cursor:pointer;
+        margin-bottom:6px;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
 
-    st.markdown('<div class="kpi-grid">', unsafe_allow_html=True)
+    if st.button("← Back to Dashboard"):
+        st.session_state["view"] = "dashboard"
 
-    kpi_card("PLAN VS ACTUAL",
-             get_val(df, "PLAN VS ACTUAL", "Value"),
-             get_val(df, "PLAN VS ACTUAL", "Target"),
-             get_val(df, "PLAN VS ACTUAL", "Variance"),
-             "#fdecec", "#e63946", "#e63946", "plan_actual")
+    st.markdown(f"""
+    <div class="detail-header">
+        <h2>{title} Analysis</h2>
+        <p class="detail-sub">Line-level variance and specific root causes (Supervisor’s View).</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    kpi_card("EFFICIENCY",
-             get_val(df, "EFFICIENCY", "Value"),
-             get_val(df, "EFFICIENCY", "Target"),
-             get_val(df, "EFFICIENCY", "Variance"),
-             "#fff2cc", "#f4a300", "#f4a300", "efficiency")
+    detail_df = pd.DataFrame({
+        "Line": ["Line 1", "Line 2", "Line 3"],
+        "Variance": ["-2%", "-1%", "+3%"],
+        "Observed Cause": ["Training Gaps", "Fabric Quality Issues", "Good Performance"],
+        "Category": ["Manpower", "Material", "None"],
+        "Action": ["Analyze & Action", "Analyze & Action", "No Action Needed"],
+    })
 
-    kpi_card("LOST TIME",
-             get_val(df, "LOST TIME", "Value"),
-             get_val(df, "LOST TIME", "Target"),
-             get_val(df, "LOST TIME", "Variance"),
-             "#fdecec", "#e63946", "#e63946", "lost_time")
+    st.dataframe(detail_df, use_container_width=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)
+# ---------- NAVIGATION CONTROL ----------
+if "view" not in st.session_state:
+    st.session_state["view"] = "dashboard"
 
-# ---------------------- Drill Down ----------------------
-def show_detail(page):
-    st.button("← Back to Dashboard", on_click=lambda: st.session_state.update({"page": "dashboard"}))
-    if page == "plan_actual":
-        st.header("Plan vs Actual Analysis")
-        st.dataframe(pd.DataFrame({
-            "Line": ["Line 1", "Line 2", "Line 3"],
-            "Variance": ["-2%", "-1%", "+3%"],
-            "Observed Cause": ["Training Gaps", "Fabric Quality Issues", "Good Performance"],
-            "Category": ["Manpower", "Material", "None"],
-            "Action": ["Analyze & Action", "Analyze & Action", "No Action Needed"]
-        }))
-    elif page == "efficiency":
-        st.header("Efficiency Analysis")
-        st.dataframe(pd.DataFrame({
-            "Line": ["Line 4", "Line 5", "Line 6"],
-            "Variance": ["-2%", "-1%", "+3%"],
-            "Observed Cause": ["Training Gaps", "Fabric Quality Issues", "Good performance"],
-            "Category": ["Manpower", "Material", "None"],
-            "Action": ["Analyze & Action", "Analyze & Action", "No action needed"]
-        }))
-    else:
-        st.header("Lost Time Analysis")
-        st.dataframe(pd.DataFrame({
-            "Line": ["Line 7", "Line 8", "Line 9"],
-            "Variance": ["+1%", "+3%", "-2%"],
-            "Observed Cause": ["Machine breakdown", "Material delay", "Absent operator"],
-            "Category": ["Machine", "Material", "Manpower"],
-            "Action": ["Analyze & Action", "Analyze & Action", "Analyze & Action"]
-        }))
-
-# ---------------------- Router ----------------------
-if "page" not in st.session_state:
-    st.session_state.page = "dashboard"
-
-if st.session_state.page == "dashboard":
+if st.session_state["view"] == "dashboard":
     show_dashboard()
-else:
-    show_detail(st.session_state.page)
+elif st.session_state["view"] == "PlanVsActual":
+    show_detail_page("Plan vs Actual", "PlanVsActual")
+elif st.session_state["view"] == "Efficiency":
+    show_detail_page("Efficiency", "Efficiency")
+elif st.session_state["view"] == "LostTime":
+    show_detail_page("Lost Time", "LostTime")
