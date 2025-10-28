@@ -1,4 +1,4 @@
-# Garment Production Dashboard - Streamlit App (Stable Excel version)
+# Garment Production Dashboard - Final Stable Excel Linked Version
 
 import streamlit as st
 import pandas as pd
@@ -12,20 +12,16 @@ def load_excel_data():
     try:
         df = pd.read_excel("garment_data.xlsx")
         df.columns = df.columns.str.strip().str.lower()
-
-        # normalize headers
-        rename_map = {
+        df.rename(columns={
             "kpi": "KPI",
             "value": "Value",
             "target": "Target",
             "variance": "Variance"
-        }
-        df.rename(columns=rename_map, inplace=True)
-        df["KPI"] = df["KPI"].astype(str).str.strip().str.upper()
+        }, inplace=True)
+        df["KPI"] = df["KPI"].astype(str).str.strip().str.upper().str.replace(".", "", regex=False)
         return df
     except Exception as e:
-        st.error(f"⚠️ Could not load garment_data.xlsx: {e}")
-        # fallback demo data
+        st.error(f"⚠️ Could not read garment_data.xlsx: {e}")
         return pd.DataFrame({
             "KPI": ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"],
             "Value": [80, 65, 10],
@@ -33,14 +29,17 @@ def load_excel_data():
             "Variance": [-20, -5, +5],
         })
 
-# helper function: safe value extraction
-def get_val(df, kpi, col):
-    subset = df[df["KPI"].str.contains(kpi.upper(), case=False, na=False)]
+# helper - safe KPI lookup
+def get_val(df, name, col):
+    subset = df[df["KPI"].str.contains(name.replace(".", "").upper(), na=False)]
     if not subset.empty:
-        return float(subset.iloc[0][col])
+        try:
+            return float(subset.iloc[0][col])
+        except:
+            return 0.0
     return 0.0
 
-# ---------------------- Donut Chart ----------------------
+# ---------------------- Donut ----------------------
 def donut_chart(value, ring_color, track_color="#EFEFEF", size=120, stroke=12):
     radius = (size - stroke) / 2
     circumference = 2 * math.pi * radius
@@ -48,12 +47,12 @@ def donut_chart(value, ring_color, track_color="#EFEFEF", size=120, stroke=12):
     return f"""
     <svg width="{size}" height="{size}" viewBox="0 0 {size} {size}">
       <circle cx="{size/2}" cy="{size/2}" r="{radius}"
-              stroke="{track_color}" stroke-width="{stroke}" fill="none" />
+              stroke="{track_color}" stroke-width="{stroke}" fill="none"/>
       <circle cx="{size/2}" cy="{size/2}" r="{radius}"
               stroke="{ring_color}" stroke-width="{stroke}" fill="none"
               stroke-dasharray="{progress} {circumference}"
               stroke-linecap="round"
-              transform="rotate(-90 {size/2} {size/2})" />
+              transform="rotate(-90 {size/2} {size/2})"/>
       <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
             font-size="18" font-weight="700" fill="#333">{value:.0f}%</text>
     </svg>
@@ -73,16 +72,19 @@ body {font-family: 'Inter', sans-serif;}
 }
 .header-title {font-size: 36px; font-weight: 800; margin-bottom: 6px;}
 .header-sub {font-size: 18px; opacity: 0.9;}
-.kpi-container {display: flex; gap: 25px; justify-content: space-between;}
+
+.kpi-grid {display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px;}
 .kpi-card {
-  flex: 1;
   border-radius: 18px;
   padding: 22px;
   background: var(--card-color);
   box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
-.kpi-title {font-weight: 700; margin-bottom: 10px;}
-.kpi-value {font-size: 52px; font-weight: 800; margin-top: -20px;}
+.kpi-title {font-weight: 700; margin-bottom: 8px;}
+.kpi-value {font-size: 52px; font-weight: 800; margin-top: -10px;}
 .kpi-meta {display: flex; justify-content: space-between; margin-top: 10px; font-size: 15px;}
 div.stButton > button {
   font-weight: 700 !important;
@@ -131,22 +133,26 @@ def show_dashboard():
     df = load_excel_data()
     render_header()
 
-    st.markdown('<div class="kpi-container">', unsafe_allow_html=True)
+    st.markdown('<div class="kpi-grid">', unsafe_allow_html=True)
+
     kpi_card("PLAN VS ACTUAL",
              get_val(df, "PLAN VS ACTUAL", "Value"),
              get_val(df, "PLAN VS ACTUAL", "Target"),
              get_val(df, "PLAN VS ACTUAL", "Variance"),
              "#fdecec", "#e63946", "#e63946", "plan_actual")
+
     kpi_card("EFFICIENCY",
              get_val(df, "EFFICIENCY", "Value"),
              get_val(df, "EFFICIENCY", "Target"),
              get_val(df, "EFFICIENCY", "Variance"),
              "#fff2cc", "#f4a300", "#f4a300", "efficiency")
+
     kpi_card("LOST TIME",
              get_val(df, "LOST TIME", "Value"),
              get_val(df, "LOST TIME", "Target"),
              get_val(df, "LOST TIME", "Variance"),
              "#fdecec", "#e63946", "#e63946", "lost_time")
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------- Drill Down ----------------------
