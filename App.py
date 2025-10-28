@@ -1,11 +1,9 @@
-# Garment Production Dashboard - Final Streamlit App
-# Excel linked + working drill-down + perfect layout
+# Garment Production Dashboard - Streamlit App (Stable Excel version)
 
 import streamlit as st
 import pandas as pd
 import math
 
-# ---------------------- Page Config ----------------------
 st.set_page_config(page_title="Garment Production Dashboard", layout="wide")
 
 # ---------------------- Data Loader ----------------------
@@ -14,16 +12,20 @@ def load_excel_data():
     try:
         df = pd.read_excel("garment_data.xlsx")
         df.columns = df.columns.str.strip().str.lower()
-        df.rename(columns={
+
+        # normalize headers
+        rename_map = {
             "kpi": "KPI",
             "value": "Value",
             "target": "Target",
             "variance": "Variance"
-        }, inplace=True)
-        df["KPI"] = df["KPI"].astype(str).str.upper()
+        }
+        df.rename(columns=rename_map, inplace=True)
+        df["KPI"] = df["KPI"].astype(str).str.strip().str.upper()
         return df
     except Exception as e:
-        st.error(f"Error reading Excel file: {e}")
+        st.error(f"⚠️ Could not load garment_data.xlsx: {e}")
+        # fallback demo data
         return pd.DataFrame({
             "KPI": ["PLAN VS ACTUAL", "EFFICIENCY", "LOST TIME"],
             "Value": [80, 65, 10],
@@ -31,7 +33,14 @@ def load_excel_data():
             "Variance": [-20, -5, +5],
         })
 
-# ---------------------- Donut Chart SVG ----------------------
+# helper function: safe value extraction
+def get_val(df, kpi, col):
+    subset = df[df["KPI"].str.contains(kpi.upper(), case=False, na=False)]
+    if not subset.empty:
+        return float(subset.iloc[0][col])
+    return 0.0
+
+# ---------------------- Donut Chart ----------------------
 def donut_chart(value, ring_color, track_color="#EFEFEF", size=120, stroke=12):
     radius = (size - stroke) / 2
     circumference = 2 * math.pi * radius
@@ -42,14 +51,15 @@ def donut_chart(value, ring_color, track_color="#EFEFEF", size=120, stroke=12):
               stroke="{track_color}" stroke-width="{stroke}" fill="none" />
       <circle cx="{size/2}" cy="{size/2}" r="{radius}"
               stroke="{ring_color}" stroke-width="{stroke}" fill="none"
-              stroke-dasharray="{progress} {circumference}" 
-              stroke-linecap="round" transform="rotate(-90 {size/2} {size/2})" />
+              stroke-dasharray="{progress} {circumference}"
+              stroke-linecap="round"
+              transform="rotate(-90 {size/2} {size/2})" />
       <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
             font-size="18" font-weight="700" fill="#333">{value:.0f}%</text>
     </svg>
     """
 
-# ---------------------- CSS Styles ----------------------
+# ---------------------- CSS ----------------------
 st.markdown("""
 <style>
 body {font-family: 'Inter', sans-serif;}
@@ -63,7 +73,6 @@ body {font-family: 'Inter', sans-serif;}
 }
 .header-title {font-size: 36px; font-weight: 800; margin-bottom: 6px;}
 .header-sub {font-size: 18px; opacity: 0.9;}
-
 .kpi-container {display: flex; gap: 25px; justify-content: space-between;}
 .kpi-card {
   flex: 1;
@@ -75,7 +84,6 @@ body {font-family: 'Inter', sans-serif;}
 .kpi-title {font-weight: 700; margin-bottom: 10px;}
 .kpi-value {font-size: 52px; font-weight: 800; margin-top: -20px;}
 .kpi-meta {display: flex; justify-content: space-between; margin-top: 10px; font-size: 15px;}
-
 div.stButton > button {
   font-weight: 700 !important;
   border-radius: 8px !important;
@@ -115,42 +123,37 @@ def kpi_card(title, value, target, variance, bg_color, ring_color, accent_color,
         </div>
     </div>
     """, unsafe_allow_html=True)
-
     if st.button("Drill Down", key=f"btn_{route}"):
         st.session_state.page = route
 
-# ---------------------- Dashboard View ----------------------
+# ---------------------- Dashboard ----------------------
 def show_dashboard():
     df = load_excel_data()
     render_header()
 
     st.markdown('<div class="kpi-container">', unsafe_allow_html=True)
-    with st.container():
-        kpi_card("PLAN VS ACTUAL",
-                 df.loc[df["KPI"] == "PLAN VS ACTUAL", "Value"].values[0],
-                 df.loc[df["KPI"] == "PLAN VS ACTUAL", "Target"].values[0],
-                 df.loc[df["KPI"] == "PLAN VS ACTUAL", "Variance"].values[0],
-                 "#fdecec", "#e63946", "#e63946", "plan_actual")
-    with st.container():
-        kpi_card("EFFICIENCY",
-                 df.loc[df["KPI"] == "EFFICIENCY", "Value"].values[0],
-                 df.loc[df["KPI"] == "EFFICIENCY", "Target"].values[0],
-                 df.loc[df["KPI"] == "EFFICIENCY", "Variance"].values[0],
-                 "#fff2cc", "#f4a300", "#f4a300", "efficiency")
-    with st.container():
-        kpi_card("LOST TIME",
-                 df.loc[df["KPI"] == "LOST TIME", "Value"].values[0],
-                 df.loc[df["KPI"] == "LOST TIME", "Target"].values[0],
-                 df.loc[df["KPI"] == "LOST TIME", "Variance"].values[0],
-                 "#fdecec", "#e63946", "#e63946", "lost_time")
+    kpi_card("PLAN VS ACTUAL",
+             get_val(df, "PLAN VS ACTUAL", "Value"),
+             get_val(df, "PLAN VS ACTUAL", "Target"),
+             get_val(df, "PLAN VS ACTUAL", "Variance"),
+             "#fdecec", "#e63946", "#e63946", "plan_actual")
+    kpi_card("EFFICIENCY",
+             get_val(df, "EFFICIENCY", "Value"),
+             get_val(df, "EFFICIENCY", "Target"),
+             get_val(df, "EFFICIENCY", "Variance"),
+             "#fff2cc", "#f4a300", "#f4a300", "efficiency")
+    kpi_card("LOST TIME",
+             get_val(df, "LOST TIME", "Value"),
+             get_val(df, "LOST TIME", "Target"),
+             get_val(df, "LOST TIME", "Variance"),
+             "#fdecec", "#e63946", "#e63946", "lost_time")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ---------------------- Drill Down Views ----------------------
+# ---------------------- Drill Down ----------------------
 def show_detail(page):
     st.button("← Back to Dashboard", on_click=lambda: st.session_state.update({"page": "dashboard"}))
     if page == "plan_actual":
         st.header("Plan vs Actual Analysis")
-        st.write("Line-level variance and specific root causes (Supervisor’s View).")
         st.dataframe(pd.DataFrame({
             "Line": ["Line 1", "Line 2", "Line 3"],
             "Variance": ["-2%", "-1%", "+3%"],
@@ -177,7 +180,7 @@ def show_detail(page):
             "Action": ["Analyze & Action", "Analyze & Action", "Analyze & Action"]
         }))
 
-# ---------------------- Routing ----------------------
+# ---------------------- Router ----------------------
 if "page" not in st.session_state:
     st.session_state.page = "dashboard"
 
